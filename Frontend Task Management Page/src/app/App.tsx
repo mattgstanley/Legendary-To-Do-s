@@ -213,11 +213,11 @@ function App() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Building2 className="size-8 text-blue-600" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Construction Command Center</h1>
-                <p className="text-sm text-gray-600">Master task tracking and management system</p>
-              </div>
+              <img 
+                src="/assets/legendary-homes-logo.svg" 
+                alt="Legendary Homes Cincinnati" 
+                className="h-16 w-auto object-contain"
+              />
             </div>
             <div className="flex items-center gap-2">
               {userRole === 'admin' && (

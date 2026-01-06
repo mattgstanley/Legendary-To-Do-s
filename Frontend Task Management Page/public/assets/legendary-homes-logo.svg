@@ -1,0 +1,52 @@
+<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
+  <!-- Background -->
+  <rect width="300" height="200" fill="white"/>
+  
+  <!-- TRADITION text at top -->
+  <text x="150" y="25" font-family="serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a4d5c">TRADITION</text>
+  
+  <!-- Year 19 on left -->
+  <text x="80" y="75" font-family="sans-serif" font-size="20" text-anchor="middle" fill="#1a4d5c">19</text>
+  
+  <!-- Lantern in center -->
+  <g transform="translate(150, 75)">
+    <!-- Lantern handle/loop -->
+    <path d="M 0,-25 Q 0,-30 5,-30 Q 10,-30 10,-25" stroke="#1a4d5c" stroke-width="2" fill="none"/>
+    
+    <!-- Lantern cap -->
+    <ellipse cx="0" cy="-20" rx="12" ry="4" fill="#1a4d5c"/>
+    
+    <!-- Lantern glass enclosure -->
+    <ellipse cx="0" cy="-5" rx="15" ry="18" fill="none" stroke="#1a4d5c" stroke-width="2"/>
+    
+    <!-- Light source inside -->
+    <circle cx="0" cy="-5" r="4" fill="#1a4d5c" opacity="0.6"/>
+    
+    <!-- Vertical bars (cage) -->
+    <line x1="-12" y1="-23" x2="-12" y2="13" stroke="#1a4d5c" stroke-width="1.5"/>
+    <line x1="-6" y1="-23" x2="-6" y2="13" stroke="#1a4d5c" stroke-width="1.5"/>
+    <line x1="0" y1="-23" x2="0" y2="13" stroke="#1a4d5c" stroke-width="1.5"/>
+    <line x1="6" y1="-23" x2="6" y2="13" stroke="#1a4d5c" stroke-width="1.5"/>
+    <line x1="12" y1="-23" x2="12" y2="13" stroke="#1a4d5c" stroke-width="1.5"/>
+    
+    <!-- Horizontal bands -->
+    <line x1="-15" y1="-23" x2="15" y2="-23" stroke="#1a4d5c" stroke-width="2"/>
+    <line x1="-15" y1="13" x2="15" y2="13" stroke="#1a4d5c" stroke-width="2"/>
+    
+    <!-- Base detail -->
+    <circle cx="0" cy="18" r="2" fill="#1a4d5c"/>
+  </g>
+  
+  <!-- Year 82 on right -->
+  <text x="220" y="75" font-family="sans-serif" font-size="20" text-anchor="middle" fill="#1a4d5c">82</text>
+  
+  <!-- Legendary text (script/calligraphy style) -->
+  <text x="150" y="115" font-family="serif" font-size="32" font-style="italic" text-anchor="middle" fill="#1a4d5c">Legendary</text>
+  
+  <!-- HOMES text -->
+  <text x="150" y="140" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#1a4d5c">HOMES</text>
+  
+  <!-- CINCINNATI text -->
+  <text x="150" y="160" font-family="sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#1a4d5c">CINCINNATI</text>
+</svg>
+
