@@ -12,48 +12,124 @@ async function getSheetsClient() {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not set');
   }
 
-  if (keyContent.trim().startsWith('{')) {
+  const trimmedContent = keyContent.trim();
+  const preview = trimmedContent.length > 100 
+    ? trimmedContent.substring(0, 100) + '...' 
+    : trimmedContent;
+  
+  console.log(`GOOGLE_SERVICE_ACCOUNT_KEY detected (preview): ${preview.substring(0, 50)}...`);
+
+  let auth;
+  const fs = require('fs');
+  const path = require('path');
+  
+  // First, try to see if it's a file path
+  // Check for common file extensions or path-like patterns (but not if it's clearly JSON)
+  const looksLikeFilePath = (trimmedContent.includes('.json') || 
+                             trimmedContent.includes('/') || 
+                             trimmedContent.includes('\\')) &&
+                             !trimmedContent.startsWith('{') &&
+                             !trimmedContent.startsWith('[');
+  
+  if (looksLikeFilePath) {
+    // Try as file path first
+    let filePath = trimmedContent;
+    
+    if (filePath.startsWith('./')) {
+      filePath = filePath.substring(2);
+    }
+    
+    const fullPath = path.resolve(process.cwd(), filePath);
+    
+    if (fs.existsSync(fullPath)) {
+      console.log(`Using service account key file: ${fullPath}`);
+      try {
+        auth = new google.auth.GoogleAuth({
+          keyFile: fullPath,
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+        
+        // Test authentication
+        const client = await auth.getClient();
+        const projectId = await auth.getProjectId();
+        console.log(`Authenticated successfully with project: ${projectId}`);
+        return auth;
+      } catch (error) {
+        throw new Error(`Failed to load service account from file ${fullPath}: ${error.message}`);
+      }
+    } else {
+      // It looks like a file path but file doesn't exist
+      throw new Error(`Service account key file not found at: ${fullPath}. Please check the file path or use the full JSON content instead.`);
+    }
+  }
+  
+  // If not a file path, try as JSON string
+  if (trimmedContent.startsWith('{') || trimmedContent.startsWith('[')) {
     try {
-      const keyData = JSON.parse(keyContent);
-      return new google.auth.GoogleAuth({
+      // Remove surrounding quotes if present (common in .env files)
+      let jsonContent = trimmedContent;
+      if ((jsonContent.startsWith('"') && jsonContent.endsWith('"')) ||
+          (jsonContent.startsWith("'") && jsonContent.endsWith("'"))) {
+        jsonContent = jsonContent.slice(1, -1);
+        // Unescape if needed
+        jsonContent = jsonContent.replace(/\\"/g, '"').replace(/\\'/g, "'");
+      }
+      
+      const keyData = JSON.parse(jsonContent);
+      
+      // Validate required fields
+      if (!keyData.client_email) {
+        throw new Error('Service account JSON is missing client_email field');
+      }
+      if (!keyData.private_key) {
+        throw new Error('Service account JSON is missing private_key field');
+      }
+      
+      console.log(`Using service account: ${keyData.client_email}`);
+      
+      auth = new google.auth.GoogleAuth({
         credentials: keyData,
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });
     } catch (e) {
-      throw new Error(`Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON: ${e.message}`);
+      if (e.message.includes('client_email') || e.message.includes('private_key')) {
+        throw e;
+      }
+      // Show more helpful error
+      const errorMsg = `Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON: ${e.message}. `;
+      const suggestion = trimmedContent.startsWith('{') 
+        ? 'The value appears to be JSON but is invalid. Please check: 1) Is it valid JSON? 2) If using a file path, ensure the file exists. 3) If pasting JSON, ensure it\'s the complete JSON content without extra characters.'
+        : 'If you intended to use a file path, ensure the file exists. If you intended to use JSON, ensure it starts with { and is valid JSON.';
+      throw new Error(errorMsg + suggestion);
     }
-  }
-
-  const fs = require('fs');
-  const path = require('path');
-  let filePath = keyContent.trim();
-  
-  if (filePath.startsWith('./')) {
-    filePath = filePath.substring(2);
+  } else {
+    throw new Error(`GOOGLE_SERVICE_ACCOUNT_KEY format not recognized. It should be either: 1) A file path to a .json file (e.g., "./legendary-home-481509-7918c12b8c1c.json"), or 2) A JSON string starting with {. Current value preview: ${preview}`);
   }
   
-  const fullPath = path.resolve(process.cwd(), filePath);
-  if (fs.existsSync(fullPath)) {
-    return new google.auth.GoogleAuth({
-      keyFile: fullPath,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+  // Test authentication by getting credentials
+  try {
+    const client = await auth.getClient();
+    const projectId = await auth.getProjectId();
+    console.log(`Authenticated successfully with project: ${projectId}`);
+    return auth;
+  } catch (error) {
+    console.error('Authentication failed:', error.message);
+    throw new Error(`Failed to authenticate with Google Sheets API: ${error.message}. Please check your service account credentials.`);
   }
-
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    throw new Error(`GOOGLE_SERVICE_ACCOUNT_KEY is set to a file path, but file paths don't work on serverless platforms. Paste the entire JSON content as a string.`);
-  }
-
-  return new google.auth.GoogleAuth({
-    keyFile: filePath,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
 }
 
 async function addTaskToSheets(taskData) {
   if (!SPREADSHEET_ID) {
     throw new Error('GOOGLE_SHEET_ID environment variable is not set');
   }
+
+  console.log('Adding task to sheets:', {
+    project: taskData.project,
+    taskTitle: taskData.taskTitle,
+    trade: taskData.trade,
+    assignedTo: taskData.assignedTo,
+    priority: taskData.priority || 'Medium'
+  });
 
   const auth = await getSheetsClient();
   const timestamp = new Date().toISOString();
@@ -75,7 +151,9 @@ async function addTaskToSheets(taskData) {
   ];
 
   try {
+    console.log(`Ensuring project tab exists: ${taskData.project}`);
     await ensureProjectTabExists(auth, taskData.project);
+    console.log('Project tab ensured');
 
     const appendRow = async (range) => {
       await sheets.spreadsheets.values.append({
@@ -87,16 +165,21 @@ async function addTaskToSheets(taskData) {
       });
     };
 
+    console.log('Appending task rows to sheets...');
     await Promise.all([
-      appendRow(`${MASTER_TAB_NAME}!A:N`),
-      appendRow(`${taskData.project}!A:N`),
+      appendRow(`'${MASTER_TAB_NAME}'!A:N`),
+      appendRow(`'${taskData.project}'!A:N`),
     ]);
+    console.log('Task rows appended successfully');
 
+    console.log('Applying row formatting...');
     await Promise.all([
       applyRowFormatting(auth, MASTER_TAB_NAME),
       applyRowFormatting(auth, taskData.project),
     ]);
+    console.log('Formatting applied');
 
+    console.log(`Task created successfully with ID: ${timestamp}`);
     return { success: true, taskId: timestamp };
   } catch (error) {
     if (error.message.includes('Requested entity was not found')) {
@@ -107,32 +190,47 @@ async function addTaskToSheets(taskData) {
 }
 
 async function ensureContractorsTabExists(auth) {
+  const startTime = Date.now();
   const sheetsClient = sheets.spreadsheets;
   
   try {
+    console.log(`[${Date.now() - startTime}ms] Checking if Contractors tab exists...`);
     const spreadsheet = await sheetsClient.get({ auth, spreadsheetId: SPREADSHEET_ID });
     const existingTabs = spreadsheet.data.sheets.map(s => s.properties.title);
+    console.log(`[${Date.now() - startTime}ms] Existing tabs:`, existingTabs);
     
     if (existingTabs.includes(CONTRACTORS_TAB_NAME)) {
-      const response = await sheets.spreadsheets.values.get({
-        auth,
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${CONTRACTORS_TAB_NAME}!A1:D1`,
-      });
-      
-      if (!response.data.values || response.data.values.length === 0) {
-        const headers = ['Contractor Name', 'Email', 'Phone', 'Trade'];
-        await sheets.spreadsheets.values.update({
+      console.log(`[${Date.now() - startTime}ms] Contractors tab exists, checking headers...`);
+      try {
+        const response = await sheets.spreadsheets.values.get({
           auth,
           spreadsheetId: SPREADSHEET_ID,
-          range: `${CONTRACTORS_TAB_NAME}!A1:D1`,
-          valueInputOption: 'USER_ENTERED',
-          resource: { values: [headers] },
+          range: `'${CONTRACTORS_TAB_NAME}'!A1:D1`,
         });
+        
+        if (!response.data.values || response.data.values.length === 0) {
+          console.log(`[${Date.now() - startTime}ms] Adding headers to Contractors tab...`);
+          const headers = ['Contractor Name', 'Email', 'Phone', 'Trade'];
+          await sheets.spreadsheets.values.update({
+            auth,
+            spreadsheetId: SPREADSHEET_ID,
+            range: `'${CONTRACTORS_TAB_NAME}'!A1:D1`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values: [headers] },
+          });
+          console.log(`[${Date.now() - startTime}ms] Headers added`);
+        } else {
+          console.log(`[${Date.now() - startTime}ms] Headers already exist`);
+        }
+      } catch (rangeError) {
+        console.error(`[${Date.now() - startTime}ms] Error checking/updating headers:`, rangeError.message);
+        // Continue anyway - headers might already be there
       }
+      console.log(`[${Date.now() - startTime}ms] Contractors tab setup complete`);
       return;
     }
 
+    console.log(`[${Date.now() - startTime}ms] Creating Contractors tab...`);
     await sheetsClient.batchUpdate({
       auth,
       spreadsheetId: SPREADSHEET_ID,
@@ -140,38 +238,63 @@ async function ensureContractorsTabExists(auth) {
         requests: [{ addSheet: { properties: { title: CONTRACTORS_TAB_NAME } } }],
       },
     });
+    console.log(`[${Date.now() - startTime}ms] Contractors tab created`);
 
+    console.log(`[${Date.now() - startTime}ms] Adding headers to new Contractors tab...`);
     const headers = ['Contractor Name', 'Email', 'Phone', 'Trade'];
     await sheets.spreadsheets.values.update({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${CONTRACTORS_TAB_NAME}!A1:D1`,
+      range: `'${CONTRACTORS_TAB_NAME}'!A1:D1`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: [headers] },
     });
+    console.log(`[${Date.now() - startTime}ms] Headers added`);
 
-    const updatedSpreadsheet = await sheetsClient.get({ auth, spreadsheetId: SPREADSHEET_ID });
-    const sheetId = updatedSpreadsheet.data.sheets.find(s => s.properties.title === CONTRACTORS_TAB_NAME).properties.sheetId;
-    await sheetsClient.batchUpdate({
-      auth,
-      spreadsheetId: SPREADSHEET_ID,
-      resource: {
-        requests: [{
-          repeatCell: {
-            range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
-            cell: {
-              userEnteredFormat: {
-                backgroundColor: { red: 0.2, green: 0.4, blue: 0.6 },
-                textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true },
+    // Try to apply formatting, but don't fail if it doesn't work
+    try {
+      console.log(`[${Date.now() - startTime}ms] Applying formatting to Contractors tab...`);
+      const updatedSpreadsheet = await sheetsClient.get({ auth, spreadsheetId: SPREADSHEET_ID });
+      const sheet = updatedSpreadsheet.data.sheets.find(s => s.properties.title === CONTRACTORS_TAB_NAME);
+      
+      if (!sheet) {
+        console.warn(`[${Date.now() - startTime}ms] Contractors tab was created but cannot be found for formatting`);
+      } else {
+        const sheetId = sheet.properties.sheetId;
+        await sheetsClient.batchUpdate({
+          auth,
+          spreadsheetId: SPREADSHEET_ID,
+          resource: {
+            requests: [{
+              repeatCell: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.2, green: 0.4, blue: 0.6 },
+                    textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true },
+                  },
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat)',
               },
-            },
-            fields: 'userEnteredFormat(backgroundColor,textFormat)',
+            }],
           },
-        }],
-      },
-    });
+        });
+        console.log(`[${Date.now() - startTime}ms] Formatting applied`);
+      }
+    } catch (formatError) {
+      console.warn(`[${Date.now() - startTime}ms] Warning: Could not apply formatting to Contractors tab:`, formatError.message);
+      // Continue - formatting is optional
+    }
+    console.log(`[${Date.now() - startTime}ms] Contractors tab setup complete`);
   } catch (error) {
-    console.error('Error ensuring Contractors tab exists:', error);
+    const totalTime = Date.now() - startTime;
+    console.error(`[${totalTime}ms] Error ensuring Contractors tab exists:`, error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      stack: error.stack
+    });
+    throw error; // Re-throw to prevent silent failures
   }
 }
 
@@ -188,7 +311,7 @@ async function ensureProjectTabExists(auth, projectName) {
       const response = await sheets.spreadsheets.values.get({
         auth,
         spreadsheetId: SPREADSHEET_ID,
-        range: `${projectName}!A1:N1`,
+        range: `'${projectName}'!A1:N1`,
       });
       
       if (!response.data.values || response.data.values[0]?.length < 14) {
@@ -220,16 +343,26 @@ async function setupSheetHeaders(auth, sheetName) {
   await sheets.spreadsheets.values.update({
     auth,
     spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A1:N1`,
+    range: `'${sheetName}'!A1:N1`,
     valueInputOption: 'USER_ENTERED',
     resource: { values: [headers] },
   });
 }
 
 async function setupSheetFormatting(auth, sheetName) {
+  const startTime = Date.now();
   const sheetsClient = sheets.spreadsheets;
+  console.log(`[${Date.now() - startTime}ms] Setting up formatting for sheet: ${sheetName}`);
+  
   const spreadsheet = await sheetsClient.get({ auth, spreadsheetId: SPREADSHEET_ID });
-  const sheetId = spreadsheet.data.sheets.find(s => s.properties.title === sheetName).properties.sheetId;
+  const sheet = spreadsheet.data.sheets.find(s => s.properties.title === sheetName);
+  
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found in spreadsheet`);
+  }
+  
+  const sheetId = sheet.properties.sheetId;
+  console.log(`[${Date.now() - startTime}ms] Found sheet ID: ${sheetId}`);
   
   const requests = [];
   
@@ -344,16 +477,24 @@ async function setupSheetFormatting(auth, sheetName) {
   // Note: We'll set up a filter view for this instead of sorting the data directly
   // as sorting can interfere with new data additions
   
+  console.log(`[${Date.now() - startTime}ms] Applying batch formatting updates (${requests.length} requests)...`);
   await sheetsClient.batchUpdate({
     auth,
     spreadsheetId: SPREADSHEET_ID,
     resource: { requests },
   });
+  console.log(`[${Date.now() - startTime}ms] Batch formatting updates completed`);
   
+  // Skip formula setup for now to speed up initialization - formulas can be added later
+  // This is the slowest part and not critical for initial setup
+  console.log(`[${Date.now() - startTime}ms] Formatting setup completed (formulas skipped for speed)`);
+  
+  // Uncomment below if you want to set up formulas (slower but adds "Days Old" calculation)
+  /*
   const valuesResponse = await sheets.spreadsheets.values.get({
     auth,
     spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A:A`,
+    range: `'${sheetName}'!A:A`,
   });
   
   const rowCount = (valuesResponse.data.values || []).length;
@@ -366,11 +507,12 @@ async function setupSheetFormatting(auth, sheetName) {
     await sheets.spreadsheets.values.update({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!B2:B${rowCount}`,
+      range: `'${sheetName}'!B2:B${rowCount}`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: formulas },
     });
   }
+  */
 }
 
 async function applyRowFormatting(auth, projectName) {
@@ -378,7 +520,7 @@ async function applyRowFormatting(auth, projectName) {
     const response = await sheets.spreadsheets.values.get({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${projectName}!A:A`,
+      range: `'${projectName}'!A:A`,
     });
     
     const rowCount = (response.data.values || []).length;
@@ -389,7 +531,7 @@ async function applyRowFormatting(auth, projectName) {
     await sheets.spreadsheets.values.update({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${projectName}!B${lastRow}`,
+      range: `'${projectName}'!B${lastRow}`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: [[formula]] },
     });
@@ -409,7 +551,7 @@ async function getTasks(filters = {}) {
     const response = await sheets.spreadsheets.values.get({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${MASTER_TAB_NAME}!A:N`,
+      range: `'${MASTER_TAB_NAME}'!A:N`,
     });
 
     const rows = response.data.values || [];
@@ -448,18 +590,169 @@ async function createProjectTab(projectName) {
   return { success: true, message: `Project tab '${projectName}' created successfully` };
 }
 
+async function verifyCredentials() {
+  const diagnostics = {
+    hasSheetId: !!SPREADSHEET_ID,
+    sheetId: SPREADSHEET_ID || 'NOT SET',
+    sheetIdLength: SPREADSHEET_ID ? SPREADSHEET_ID.length : 0,
+    hasServiceAccountKey: !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+    serviceAccountKeyType: null,
+    serviceAccountKeyPreview: null,
+    serviceAccountEmail: null,
+    projectId: null,
+    authenticationStatus: 'not_attempted',
+    errors: []
+  };
+
+  // Check service account key
+  const keyContent = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (keyContent) {
+    const trimmed = keyContent.trim();
+    if (trimmed.startsWith('{')) {
+      diagnostics.serviceAccountKeyType = 'JSON string';
+      try {
+        const keyData = JSON.parse(trimmed);
+        diagnostics.serviceAccountEmail = keyData.client_email || 'NOT FOUND IN JSON';
+        diagnostics.projectId = keyData.project_id || 'NOT FOUND IN JSON';
+        diagnostics.serviceAccountKeyPreview = `JSON with email: ${keyData.client_email || 'unknown'}`;
+      } catch (e) {
+        diagnostics.serviceAccountKeyType = 'JSON string (INVALID)';
+        diagnostics.errors.push(`Failed to parse JSON: ${e.message}`);
+        diagnostics.serviceAccountKeyPreview = trimmed.substring(0, 50) + '...';
+      }
+    } else if (trimmed.includes('.json')) {
+      diagnostics.serviceAccountKeyType = 'File path';
+      const fs = require('fs');
+      const path = require('path');
+      let filePath = trimmed;
+      if (filePath.startsWith('./')) {
+        filePath = filePath.substring(2);
+      }
+      const fullPath = path.resolve(process.cwd(), filePath);
+      if (fs.existsSync(fullPath)) {
+        try {
+          const keyData = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+          diagnostics.serviceAccountEmail = keyData.client_email || 'NOT FOUND IN FILE';
+          diagnostics.projectId = keyData.project_id || 'NOT FOUND IN FILE';
+          diagnostics.serviceAccountKeyPreview = `File: ${fullPath} (valid JSON)`;
+        } catch (e) {
+          diagnostics.errors.push(`Failed to read/parse file: ${e.message}`);
+          diagnostics.serviceAccountKeyPreview = `File: ${fullPath} (INVALID JSON)`;
+        }
+      } else {
+        diagnostics.errors.push(`File not found: ${fullPath}`);
+        diagnostics.serviceAccountKeyPreview = `File path: ${trimmed} (NOT FOUND)`;
+      }
+    } else {
+      diagnostics.serviceAccountKeyType = 'Unknown format';
+      diagnostics.serviceAccountKeyPreview = trimmed.substring(0, 50) + '...';
+      diagnostics.errors.push('Service account key format not recognized');
+    }
+  }
+
+  // Try authentication
+  if (diagnostics.hasServiceAccountKey && diagnostics.errors.length === 0) {
+    try {
+      console.log('Attempting authentication...');
+      const auth = await getSheetsClient();
+      diagnostics.authenticationStatus = 'success';
+      console.log('Authentication successful');
+    } catch (error) {
+      diagnostics.authenticationStatus = 'failed';
+      diagnostics.errors.push(`Authentication failed: ${error.message}`);
+    }
+  }
+
+  return diagnostics;
+}
+
+async function testConnection() {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEET_ID environment variable is not set');
+  }
+
+  try {
+    console.log('Testing Google Sheets connection...');
+    const auth = await getSheetsClient();
+    const sheetsClient = sheets.spreadsheets;
+    
+    console.log(`Attempting to access spreadsheet: ${SPREADSHEET_ID}`);
+    const spreadsheet = await sheetsClient.get({ 
+      auth, 
+      spreadsheetId: SPREADSHEET_ID 
+    });
+    
+    const title = spreadsheet.data.properties?.title || 'Unknown';
+    const tabs = spreadsheet.data.sheets.map(s => s.properties.title);
+    
+    return {
+      success: true,
+      message: 'Successfully connected to Google Sheets',
+      spreadsheetTitle: title,
+      spreadsheetId: SPREADSHEET_ID,
+      tabs: tabs,
+      tabCount: tabs.length
+    };
+  } catch (error) {
+    console.error('Connection test failed:', error);
+    
+    let errorMessage = error.message;
+    let suggestions = [];
+    
+    if (error.message.includes('not found') || error.code === 404) {
+      errorMessage = `Google Sheet not found with ID: ${SPREADSHEET_ID}`;
+      suggestions = [
+        'Verify the GOOGLE_SHEET_ID is correct',
+        'Ensure the sheet exists and is accessible',
+        'Share the sheet with your service account email (check logs for the email)'
+      ];
+    } else if (error.message.includes('permission') || error.code === 403) {
+      errorMessage = 'Permission denied - service account does not have access';
+      suggestions = [
+        'Share the Google Sheet with your service account email',
+        'Grant "Editor" permissions to the service account',
+        'Check that the service account email matches the one in your credentials'
+      ];
+    } else if (error.message.includes('authentication') || error.message.includes('credentials')) {
+      errorMessage = 'Authentication failed';
+      suggestions = [
+        'Verify GOOGLE_SERVICE_ACCOUNT_KEY is set correctly',
+        'Check that the JSON credentials are valid',
+        'Ensure the service account key file exists (if using file path)'
+      ];
+    }
+    
+    throw new Error(`${errorMessage}. ${suggestions.length > 0 ? 'Suggestions: ' + suggestions.join('; ') : ''} Original error: ${error.message}`);
+  }
+}
+
 async function initializeMasterTab() {
-  const auth = await getSheetsClient();
-  const sheetsClient = sheets.spreadsheets;
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEET_ID environment variable is not set');
+  }
+
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] Starting initializeMasterTab...`);
   
   try {
-    // Ensure Contractors tab exists first
-    await ensureContractorsTabExists(auth);
+    console.log(`[${Date.now() - startTime}ms] Getting authentication...`);
+    const auth = await getSheetsClient();
+    console.log(`[${Date.now() - startTime}ms] Authentication successful`);
     
+    const sheetsClient = sheets.spreadsheets;
+    
+    // Ensure Contractors tab exists first
+    console.log(`[${Date.now() - startTime}ms] Ensuring Contractors tab exists...`);
+    await ensureContractorsTabExists(auth);
+    console.log(`[${Date.now() - startTime}ms] Contractors tab ensured`);
+    
+    console.log(`[${Date.now() - startTime}ms] Getting spreadsheet info...`);
     const spreadsheet = await sheetsClient.get({ auth, spreadsheetId: SPREADSHEET_ID });
     const existingTabs = spreadsheet.data.sheets.map(s => s.properties.title);
+    console.log(`[${Date.now() - startTime}ms] Existing tabs:`, existingTabs);
     
     if (!existingTabs.includes(MASTER_TAB_NAME)) {
+      console.log(`[${Date.now() - startTime}ms] Creating Master Tasks tab...`);
       // Create Master Tasks tab
       await sheetsClient.batchUpdate({
         auth,
@@ -468,15 +761,42 @@ async function initializeMasterTab() {
           requests: [{ addSheet: { properties: { title: MASTER_TAB_NAME } } }],
         },
       });
+      console.log(`[${Date.now() - startTime}ms] Master Tasks tab created`);
+    } else {
+      console.log(`[${Date.now() - startTime}ms] Master Tasks tab already exists`);
     }
     
     // Setup headers and formatting for Master Tasks tab
+    console.log(`[${Date.now() - startTime}ms] Setting up headers...`);
     await setupSheetHeaders(auth, MASTER_TAB_NAME);
-    await setupSheetFormatting(auth, MASTER_TAB_NAME);
+    console.log(`[${Date.now() - startTime}ms] Headers set up`);
     
-    return { success: true, message: 'Master tab and Contractors tab initialized successfully' };
+    console.log(`[${Date.now() - startTime}ms] Setting up formatting...`);
+    await setupSheetFormatting(auth, MASTER_TAB_NAME);
+    console.log(`[${Date.now() - startTime}ms] Formatting set up`);
+    
+    const totalTime = Date.now() - startTime;
+    console.log(`[${totalTime}ms] Initialize completed successfully`);
+    
+    return { 
+      success: true, 
+      message: 'Master tab and Contractors tab initialized successfully',
+      duration: `${totalTime}ms`
+    };
   } catch (error) {
-    console.error('Error initializing Master tab:', error);
+    const totalTime = Date.now() - startTime;
+    console.error(`[${totalTime}ms] Error initializing Master tab:`, error);
+    console.error('Error stack:', error.stack);
+    
+    // Provide helpful error messages
+    if (error.message.includes('not found') || error.code === 404) {
+      throw new Error(`Google Sheet not found. Check: 1) Sheet ID is correct (${SPREADSHEET_ID}), 2) Sheet is shared with service account, 3) Sheet exists. Original: ${error.message}`);
+    } else if (error.message.includes('permission') || error.code === 403) {
+      throw new Error(`Permission denied. Share the sheet with your service account email (check logs above) and grant Editor access. Original: ${error.message}`);
+    } else if (error.message.includes('timeout') || totalTime > 55000) {
+      throw new Error(`Operation timed out after ${totalTime}ms. This may indicate network issues or the Google Sheets API is slow. Try again or check your connection.`);
+    }
+    
     throw error;
   }
 }
@@ -494,7 +814,7 @@ async function getContractorEmails() {
     const response = await sheets.spreadsheets.values.get({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${CONTRACTORS_TAB_NAME}!A:B`, // Get Name (A) and Email (B) columns
+      range: `'${CONTRACTORS_TAB_NAME}'!A:B`, // Get Name (A) and Email (B) columns
     });
 
     const rows = response.data.values || [];
@@ -535,7 +855,7 @@ async function addContractor(contractorData) {
     await sheets.spreadsheets.values.append({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${CONTRACTORS_TAB_NAME}!A:D`,
+      range: `'${CONTRACTORS_TAB_NAME}'!A:D`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: [row] },
     });
@@ -558,7 +878,7 @@ async function updateTask(taskId, updateData) {
     const response = await sheets.spreadsheets.values.get({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${MASTER_TAB_NAME}!A:N`,
+      range: `'${MASTER_TAB_NAME}'!A:N`,
     });
 
     const rows = response.data.values || [];
@@ -603,7 +923,7 @@ async function updateTask(taskId, updateData) {
     await sheets.spreadsheets.values.update({
       auth,
       spreadsheetId: SPREADSHEET_ID,
-      range: `${MASTER_TAB_NAME}!A${taskRowIndex}:N${taskRowIndex}`,
+      range: `'${MASTER_TAB_NAME}'!A${taskRowIndex}:N${taskRowIndex}`,
       valueInputOption: 'USER_ENTERED',
       resource: { values: [taskRow] },
     });
@@ -612,7 +932,7 @@ async function updateTask(taskId, updateData) {
       const projectResponse = await sheets.spreadsheets.values.get({
         auth,
         spreadsheetId: SPREADSHEET_ID,
-        range: `${projectName}!A:N`,
+        range: `'${projectName}'!A:N`,
       });
 
       const projectRows = projectResponse.data.values || [];
@@ -629,7 +949,7 @@ async function updateTask(taskId, updateData) {
         await sheets.spreadsheets.values.update({
           auth,
           spreadsheetId: SPREADSHEET_ID,
-          range: `${projectName}!A${projectRowIndex}:N${projectRowIndex}`,
+          range: `'${projectName}'!A${projectRowIndex}:N${projectRowIndex}`,
           valueInputOption: 'USER_ENTERED',
           resource: { values: [taskRow] },
         });
@@ -655,6 +975,8 @@ module.exports = {
   addContractor,
   getContractorEmails,
   updateTask,
+  testConnection,
+  verifyCredentials,
 };
 
 
