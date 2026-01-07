@@ -4,7 +4,7 @@ if (require.main === module && !process.env.VERCEL) {
   } catch (e) {}
 }
 
-const { addTaskToSheets, getTasks, getSubcontractorTasks, createProjectTab, initializeMasterTab, addContractor, updateTask, testConnection, verifyCredentials } = require('./google-sheets-actions');
+const { addTaskToSheets, getTasks, getSubcontractorTasks, createProjectTab, initializeMasterTab, addContractor, updateTask, deleteTask, deleteTasks, testConnection, verifyCredentials } = require('./google-sheets-actions');
 const EmailAutomation = require('./email-automation');
 
 async function processTaskInput(taskData) {
@@ -100,6 +100,26 @@ async function updateTaskInSheets(taskId, updateData) {
   }
 }
 
+async function deleteTaskInSheets(taskId) {
+  try {
+    const result = await deleteTask(taskId);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function deleteTasksInSheets(criteria) {
+  try {
+    const result = await deleteTasks(criteria);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Error deleting tasks:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   processTaskInput,
   processMultipleTasks,
@@ -114,6 +134,8 @@ module.exports = {
   initializeMasterTab,
   addContractor: addNewContractor,
   updateTaskInSheets,
+  deleteTaskInSheets,
+  deleteTasksInSheets,
   testConnection,
   verifyCredentials
 };
@@ -278,6 +300,22 @@ if (require.main === module) {
   app.put('/api/tasks', asyncHandler(tasksHandler));
   app.get('/api/tasks', asyncHandler(tasksHandler));
   app.delete('/api/tasks', asyncHandler(tasksHandler));
+  
+  // Bulk delete endpoint for Custom GPT
+  app.post('/api/tasks/delete', asyncHandler(async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') return res.status(200).end();
+
+    try {
+      return res.json(await deleteTasksInSheets(req.body));
+    } catch (error) {
+      console.error('Error in bulk delete API:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }));
   
   app.get('/api/subcontractor/:assignedTo', (req, res, next) => {
     // Convert path parameter to query parameter for the handler

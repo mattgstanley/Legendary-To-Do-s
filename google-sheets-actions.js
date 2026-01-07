@@ -965,10 +965,223 @@ async function updateTask(taskId, updateData) {
   }
 }
 
+async function deleteTask(taskId) {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEET_ID environment variable is not set');
+  }
+
+  const auth = await getSheetsClient();
+  
+  try {
+    // Get Master Tasks to find the task
+    const masterResponse = await sheets.spreadsheets.values.get({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'${MASTER_TAB_NAME}'!A:N`,
+    });
+
+    const masterRows = masterResponse.data.values || [];
+    if (masterRows.length < 2) {
+      throw new Error('No tasks found');
+    }
+
+    // Find task in Master Tasks
+    let masterRowIndex = -1;
+    let projectName = '';
+
+    for (let i = 1; i < masterRows.length; i++) {
+      if (masterRows[i][0] === taskId) {
+        masterRowIndex = i + 1; // +1 because Sheets API is 1-indexed
+        projectName = masterRows[i][2] || '';
+        break;
+      }
+    }
+
+    if (masterRowIndex === -1) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    // Get sheet ID for Master Tasks tab
+    const spreadsheet = await sheets.spreadsheets.get({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+    });
+    
+    const masterSheetId = spreadsheet.data.sheets.find(
+      s => s.properties.title === MASTER_TAB_NAME
+    )?.properties.sheetId;
+
+    if (!masterSheetId) {
+      throw new Error(`Master Tasks tab not found`);
+    }
+
+    const deleteRequests = [
+      {
+        deleteDimension: {
+          range: {
+            sheetId: masterSheetId,
+            dimension: 'ROWS',
+            startIndex: masterRowIndex - 1, // 0-indexed
+            endIndex: masterRowIndex,
+          },
+        },
+      },
+    ];
+
+    // If task has a project, also delete from project tab
+    if (projectName) {
+      const projectSheetId = spreadsheet.data.sheets.find(
+        s => s.properties.title === projectName
+      )?.properties.sheetId;
+
+      if (projectSheetId) {
+        // Find task in project tab
+        const projectResponse = await sheets.spreadsheets.values.get({
+          auth,
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'${projectName}'!A:N`,
+        });
+
+        const projectRows = projectResponse.data.values || [];
+        let projectRowIndex = -1;
+
+        for (let i = 1; i < projectRows.length; i++) {
+          if (projectRows[i][0] === taskId) {
+            projectRowIndex = i + 1;
+            break;
+          }
+        }
+
+        if (projectRowIndex !== -1) {
+          deleteRequests.push({
+            deleteDimension: {
+              range: {
+                sheetId: projectSheetId,
+                dimension: 'ROWS',
+                startIndex: projectRowIndex - 1,
+                endIndex: projectRowIndex,
+              },
+            },
+          });
+        }
+      }
+    }
+
+    // Execute batch delete
+    await sheets.spreadsheets.batchUpdate({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+      resource: {
+        requests: deleteRequests,
+      },
+    });
+
+    return { 
+      success: true, 
+      message: `Task deleted successfully from ${projectName ? 'Master Tasks and ' + projectName : 'Master Tasks'}`, 
+      taskId 
+    };
+  } catch (error) {
+    if (error.message.includes('Requested entity was not found')) {
+      throw new Error(`Google Sheet not found. Check: 1) Sheet ID is correct (current: ${SPREADSHEET_ID}), 2) Sheet is shared with service account email, 3) Sheet exists. Original error: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+async function deleteTasks(criteria) {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEET_ID environment variable is not set');
+  }
+
+  try {
+    // If specific taskIds are provided, delete those directly
+    if (criteria.taskIds && criteria.taskIds.length > 0) {
+      const results = [];
+      for (const taskId of criteria.taskIds) {
+        try {
+          const result = await deleteTask(taskId);
+          results.push({ taskId, success: true, ...result });
+        } catch (error) {
+          results.push({ taskId, success: false, error: error.message });
+        }
+      }
+      const successCount = results.filter(r => r.success).length;
+      return {
+        success: true,
+        message: `Deleted ${successCount} of ${criteria.taskIds.length} tasks`,
+        deletedCount: successCount,
+        results,
+      };
+    }
+
+    // Get all tasks matching filters
+    const tasks = await getTasks(criteria.filters || {});
+    
+    if (tasks.length === 0) {
+      return { success: true, message: 'No tasks found matching criteria', deletedCount: 0 };
+    }
+
+    // Handle "last N tasks" criteria
+    let tasksToDelete = tasks;
+    if (criteria.lastN) {
+      // Sort by timestamp (newest first) and take last N
+      tasksToDelete = tasks
+        .sort((a, b) => {
+          // Get timestamp from various possible field names
+          const getTimestamp = (task) => {
+            return task.timestamp || task.taskid || task.taskId || 
+                   task['timestamp'] || task['taskid'] || task['taskid'] || '';
+          };
+          const dateA = new Date(getTimestamp(a) || 0);
+          const dateB = new Date(getTimestamp(b) || 0);
+          return dateB - dateA;
+        })
+        .slice(0, criteria.lastN);
+    }
+
+    // Delete each task
+    const results = [];
+    for (const task of tasksToDelete) {
+      // Try various field names for taskId (timestamp is in first column)
+      const taskId = task.timestamp || task.taskid || task.taskId || 
+                     task['timestamp'] || task['taskid'] || 
+                     (task['timestamp'] ? task['timestamp'] : '');
+      
+      if (taskId) {
+        try {
+          const result = await deleteTask(taskId);
+          results.push({ taskId, success: true, ...result });
+        } catch (error) {
+          results.push({ taskId, success: false, error: error.message });
+        }
+      } else {
+        results.push({ 
+          task: task.taskTitle || 'Unknown', 
+          success: false, 
+          error: 'Task ID not found' 
+        });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    return {
+      success: true,
+      message: `Deleted ${successCount} of ${tasksToDelete.length} tasks`,
+      deletedCount: successCount,
+      results,
+    };
+  } catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   addTaskToSheets,
   getTasks,
   getSubcontractorTasks,
+  deleteTask,
+  deleteTasks,
   createProjectTab,
   initializeMasterTab,
   ensureContractorsTabExists,

@@ -1,4 +1,4 @@
-const { processTaskInput, processMultipleTasks, getFilteredTasks, updateTaskInSheets } = require('../index');
+const { processTaskInput, processMultipleTasks, getFilteredTasks, updateTaskInSheets, deleteTaskInSheets } = require('../index');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -58,8 +58,8 @@ module.exports = async (req, res) => {
         return res.status(400).json({ success: false, error: 'taskId is required' });
       }
       const taskId = req.body.taskId || req.query.taskId;
-      // Delete by setting status to 'Closed' (soft delete) or implement hard delete
-      return res.json(await updateTaskInSheets(taskId, { status: 'Closed' }));
+      // Permanently delete the task from both Master Tasks and project tab
+      return res.json(await deleteTaskInSheets(taskId));
     }
 
     return res.status(405).json({ error: 'Method not allowed' });

@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://your-project.vercel.app",
+      "url": "https://legendary-to-do-s.vercel.app",
       "description": "Replace with your actual Vercel deployment URL"
     }
   ],
@@ -259,6 +259,141 @@
           },
           "400": {
             "description": "Bad request - taskId is required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_task",
+        "summary": "Delete a specific task",
+        "description": "Permanently deletes a task by its taskId. The task will be removed from both the Master Tasks tab and the project-specific tab.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string",
+                    "description": "Task ID (timestamp) of the task to delete"
+                  }
+                },
+                "required": ["taskId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "message": {"type": "string"},
+                    "taskId": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - taskId is required"
+          },
+          "404": {
+            "description": "Task not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/tasks/delete": {
+      "post": {
+        "operationId": "delete_tasks",
+        "summary": "Delete multiple tasks based on criteria",
+        "description": "Deletes multiple tasks based on filters, last N tasks, or specific task IDs. Tasks are permanently removed from both Master Tasks and project tabs.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filters": {
+                    "type": "object",
+                    "description": "Optional filters to find tasks to delete",
+                    "properties": {
+                      "project": {
+                        "type": "string",
+                        "description": "Filter by project name"
+                      },
+                      "trade": {
+                        "type": "string",
+                        "description": "Filter by trade"
+                      },
+                      "assignedTo": {
+                        "type": "string",
+                        "description": "Filter by assigned person/company"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["Open", "In Progress", "Completed"],
+                        "description": "Filter by task status"
+                      }
+                    }
+                  },
+                  "lastN": {
+                    "type": "number",
+                    "description": "If specified, delete only the last N tasks (most recent). Use this for requests like 'delete last 3 tasks'."
+                  },
+                  "taskIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional array of specific task IDs to delete. If provided, filters and lastN are ignored."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tasks deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "message": {"type": "string"},
+                    "deletedCount": {"type": "number"},
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "taskId": {"type": "string"},
+                          "success": {"type": "boolean"},
+                          "error": {"type": "string"}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
           },
           "500": {
             "description": "Server error"
