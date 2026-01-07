@@ -1029,12 +1029,23 @@ async function deleteTask(taskId) {
       spreadsheetId: SPREADSHEET_ID,
     });
     
-    const masterSheetId = spreadsheet.data.sheets.find(
+    // Find Master Tasks sheet (try exact match first, then case-insensitive)
+    let masterSheetId = spreadsheet.data.sheets.find(
       s => s.properties.title === MASTER_TAB_NAME
     )?.properties.sheetId;
 
     if (!masterSheetId) {
-      throw new Error(`Master Tasks tab not found`);
+      // Try case-insensitive match
+      const caseInsensitiveMatch = spreadsheet.data.sheets.find(
+        s => s.properties.title.trim().toLowerCase() === MASTER_TAB_NAME.trim().toLowerCase()
+      );
+      if (caseInsensitiveMatch) {
+        masterSheetId = caseInsensitiveMatch.properties.sheetId;
+      } else {
+        // Log available sheets for debugging
+        const availableSheets = spreadsheet.data.sheets.map(s => s.properties.title);
+        throw new Error(`Master Tasks tab not found. Available sheets: ${availableSheets.join(', ')}`);
+      }
     }
 
     const deleteRequests = [
@@ -1294,6 +1305,7 @@ module.exports = {
   addContractor,
   getContractorEmails,
   updateTask,
+  findTasksByName,
   testConnection,
   verifyCredentials,
 };
