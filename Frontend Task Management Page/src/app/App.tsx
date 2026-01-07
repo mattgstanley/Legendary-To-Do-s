@@ -214,7 +214,7 @@ function App() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img 
-                src="/assets/legendary-homes-logo.svg" 
+                src="/assets/legendary-homes-logo.png" 
                 alt="Legendary Homes Cincinnati" 
                 className="h-16 w-auto object-contain"
               />
