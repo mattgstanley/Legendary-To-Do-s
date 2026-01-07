@@ -1,166 +1,119 @@
 {
   "name": "Legendary Homes Jobsite Task Manager",
   "description": "Converts voice/text input into structured construction tasks and manages them in Google Sheets",
-  "instructions": "You are an AI assistant for Legendary Homes construction management. Parse natural language into structured tasks and manage them in Google Sheets.\n\nCORE FUNCTIONS:\n1. Parse tasks: Extract Project, Area, Trade, Task Title, Details, Assigned To, Priority, Due Date, Photo Needed\n2. Multiple tasks: Process ALL tasks in one input (separated by 'also', 'and', commas, or new sentences) - save automatically for 3+ tasks\n3. Smart inference: 'tile'→Tile, 'urgent'→High, 'end of week'→Friday\n4. Auto-create project tabs when new projects are mentioned\n5. DELETE: Use delete_task for specific tasks (get taskId from get_tasks first). Use delete_tasks with lastN for 'delete last N tasks'. Tasks are permanently removed from Master Tasks and project tabs.\n\nBEHAVIOR: Conversational, efficient, trust user input. For single tasks, show preview. For multiple, save all and show summary.\n\nGREETING: \"Welcome to Legendary Homes Task Manager! I help manage construction tasks.\n\nExamples:\n• 'Grandin project, kitchen tile work, assign to Tile, due Friday'\n• 'Delete last 3 tasks'\n• 'Show me all tasks for Grandin project'\n• 'Create project Oak Street'\n\nJust tell me what you need!\"",
+  "instructions": "Legendary Homes construction task manager. Parse natural language into tasks.\n\nFUNCTIONS: Parse tasks (Project, Area, Trade, Title, Details, Assigned To, Priority, Due Date, Photo). Process multiple tasks in one input - auto-save 3+. Inference: tile→Tile, urgent→High. Auto-create project tabs. DELETE BY NAME: Use delete_task_by_name. Multiple matches→show for confirmation. One match→confirm. User confirms taskId or 'delete all'.\n\nBEHAVIOR: Conversational, efficient. Single task→preview. Multiple→save all. Delete→show matches first.\n\nGREET: \"Welcome! I manage construction tasks. Try: 'Grandin project, kitchen tile work, assign to Tile, due Friday' | 'Delete Fix kitchen sink' | 'Delete last 3 tasks' | 'Show all tasks for Grandin'. What do you need?\"",
   "model": "gpt-4",
   "temperature": 0.3,
   "actions": [
     {
       "name": "add_task_to_sheets",
-      "description": "Adds a new task to Google Sheets in both the Master Tasks tab and the appropriate project tab",
+      "description": "Adds a task to Master Tasks and project tab",
       "parameters": {
         "type": "object",
         "properties": {
-          "project": {
-            "type": "string",
-            "description": "Project/home name (e.g., 'Grandin', 'Maple Street')"
-          },
-          "area": {
-            "type": "string",
-            "description": "Area of the home (e.g., 'Kitchen', 'Master Bath', 'Rear Retaining Wall')"
-          },
-          "trade": {
-            "type": "string",
-            "description": "Trade/subcontractor type (e.g., 'Masonry', 'Tile', 'Plumbing', 'Electrical', 'Carpentry')"
-          },
-          "taskTitle": {
-            "type": "string",
-            "description": "Brief task title (e.g., 'Chipped Block', 'Leaky Faucet')"
-          },
-          "taskDetails": {
-            "type": "string",
-            "description": "Detailed description of the task"
-          },
-          "assignedTo": {
-            "type": "string",
-            "description": "Person or company assigned (e.g., 'Masonry', 'John Smith', 'ABC Plumbing')"
-          },
-          "priority": {
-            "type": "string",
-            "enum": ["Low", "Medium", "High", "Urgent"],
-            "description": "Task priority level"
-          },
-          "dueDate": {
-            "type": "string",
-            "description": "Due date in YYYY-MM-DD format"
-          },
-          "photoNeeded": {
-            "type": "boolean",
-            "description": "Whether a photo is needed for this task"
-          }
+          "project": {"type": "string", "description": "Project name"},
+          "area": {"type": "string", "description": "Area"},
+          "trade": {"type": "string", "description": "Trade"},
+          "taskTitle": {"type": "string", "description": "Task title"},
+          "taskDetails": {"type": "string", "description": "Details"},
+          "assignedTo": {"type": "string", "description": "Assigned to"},
+          "priority": {"type": "string", "enum": ["Low", "Medium", "High", "Urgent"], "description": "Priority"},
+          "dueDate": {"type": "string", "description": "Due date YYYY-MM-DD"},
+          "photoNeeded": {"type": "boolean", "description": "Photo needed"}
         },
         "required": ["project", "taskTitle", "trade", "assignedTo"]
       }
     },
     {
       "name": "get_tasks",
-      "description": "Retrieves tasks from Google Sheets, optionally filtered by project, trade, assignedTo, or due date",
+      "description": "Gets tasks filtered by project, trade, assignedTo, or status",
       "parameters": {
         "type": "object",
         "properties": {
-          "project": {
-            "type": "string",
-            "description": "Filter by project name"
-          },
-          "trade": {
-            "type": "string",
-            "description": "Filter by trade"
-          },
-          "assignedTo": {
-            "type": "string",
-            "description": "Filter by assigned person/company"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["Open", "In Progress", "Completed"],
-            "description": "Filter by task status"
-          }
+          "project": {"type": "string", "description": "Filter by project"},
+          "trade": {"type": "string", "description": "Filter by trade"},
+          "assignedTo": {"type": "string", "description": "Filter by assigned"},
+          "status": {"type": "string", "enum": ["Open", "In Progress", "Completed"], "description": "Filter by status"}
         }
       }
     },
     {
       "name": "create_project_tab",
-      "description": "Creates a new project tab in the Google Sheet",
+      "description": "Creates a project tab",
       "parameters": {
         "type": "object",
         "properties": {
-          "projectName": {
-            "type": "string",
-            "description": "Name of the new project"
-          }
+          "projectName": {"type": "string", "description": "Project name"}
         },
         "required": ["projectName"]
       }
     },
     {
       "name": "get_subcontractor_tasks",
-      "description": "Gets all open tasks for a specific subcontractor/trade for email generation",
+      "description": "Gets open tasks for a subcontractor/trade",
       "parameters": {
         "type": "object",
         "properties": {
-          "assignedTo": {
-            "type": "string",
-            "description": "Subcontractor name or trade"
-          }
+          "assignedTo": {"type": "string", "description": "Subcontractor/trade"}
         },
         "required": ["assignedTo"]
       }
     },
     {
       "name": "delete_task",
-      "description": "Permanently deletes a specific task by its taskId. The task will be removed from both the Master Tasks tab and the project-specific tab.",
+      "description": "Deletes a task by taskId from Master Tasks and project tab",
       "parameters": {
         "type": "object",
         "properties": {
-          "taskId": {
-            "type": "string",
-            "description": "The task ID (timestamp) of the task to delete. You can get this from get_tasks first if needed."
-          }
+          "taskId": {"type": "string", "description": "Task ID (timestamp)"}
         },
         "required": ["taskId"]
       }
     },
     {
       "name": "delete_tasks",
-      "description": "Deletes multiple tasks based on criteria. Can delete specific tasks, tasks matching filters, or the last N tasks. Tasks are permanently removed from both Master Tasks and project tabs.",
+      "description": "Deletes multiple tasks by filters, lastN, or taskIds",
       "parameters": {
         "type": "object",
         "properties": {
           "filters": {
             "type": "object",
-            "description": "Optional filters to find tasks to delete (project, trade, assignedTo, status)",
+            "description": "Filters: project, trade, assignedTo, status",
             "properties": {
-              "project": {
-                "type": "string",
-                "description": "Filter by project name"
-              },
-              "trade": {
-                "type": "string",
-                "description": "Filter by trade"
-              },
-              "assignedTo": {
-                "type": "string",
-                "description": "Filter by assigned person/company"
-              },
-              "status": {
-                "type": "string",
-                "enum": ["Open", "In Progress", "Completed"],
-                "description": "Filter by task status"
-              }
+              "project": {"type": "string", "description": "Filter by project"},
+              "trade": {"type": "string", "description": "Filter by trade"},
+              "assignedTo": {"type": "string", "description": "Filter by assigned"},
+              "status": {"type": "string", "enum": ["Open", "In Progress", "Completed"], "description": "Filter by status"}
             }
           },
-          "lastN": {
-            "type": "number",
-            "description": "If specified, delete only the last N tasks (most recent). Use this for requests like 'delete last 3 tasks'."
-          },
-          "taskIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Optional array of specific task IDs to delete. If provided, filters and lastN are ignored."
-          }
+          "lastN": {"type": "number", "description": "Delete last N tasks"},
+          "taskIds": {"type": "array", "items": {"type": "string"}, "description": "Task IDs to delete"}
         }
+      }
+    },
+    {
+      "name": "find_tasks_by_name",
+      "description": "Finds tasks by name with fuzzy matching, sorted by relevance",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "taskName": {"type": "string", "description": "Task name to search"},
+          "limit": {"type": "number", "description": "Max results", "default": 10}
+        },
+        "required": ["taskName"]
+      }
+    },
+    {
+      "name": "delete_task_by_name",
+      "description": "Deletes task by name. Multiple matches→show for confirmation. One match→confirm. Use taskId to confirm specific task or deleteAll=true for all.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "taskName": {"type": "string", "description": "Task name to delete"},
+          "taskId": {"type": "string", "description": "TaskId to confirm deletion"},
+          "deleteAll": {"type": "boolean", "description": "Delete all matches", "default": false}
+        },
+        "required": ["taskName"]
       }
     }
   ],
@@ -170,16 +123,10 @@
     "function_calling": true
   },
   "conversation_starters": [
-    "Add a new task for the Grandin project: kitchen tile work, assign to Tile, due Friday, photo needed.",
-    "Show me all open tasks for Masonry.",
-    "Create a new project called Maple Street.",
-    "What are my urgent tasks for today?",
-    "Grandin project: kitchen tile work, assign to Tile, due Friday. Also, rear wall chipped block, assign to Masonry, urgent. And master bath needs plumbing fix, assign to ABC Plumbing.",
-    "Mark the kitchen tile work task as Closed.",
-    "Add a new contractor: ABC Plumbing, email abc@plumbing.com, trade Plumbing.",
-    "Delete the kitchen tile work task.",
-    "Delete last 3 tasks.",
-    "Delete all tasks for Grandin project."
+    "Add task: Grandin project, kitchen tile work, assign to Tile, due Friday",
+    "Show all tasks for Masonry",
+    "Delete Fix kitchen sink",
+    "Delete last 3 tasks"
   ]
 }
 

@@ -558,11 +558,17 @@ async function getTasks(filters = {}) {
     if (rows.length === 0) return [];
 
     const headers = rows[0];
-    let tasks = rows.slice(1).map(row => {
+    let tasks = rows.slice(1).map((row, rowIndex) => {
       const task = {};
       headers.forEach((header, index) => {
-        task[header.toLowerCase().replace(/\s+/g, '')] = row[index] || '';
+        const key = header.toLowerCase().replace(/\s+/g, '');
+        task[key] = row[index] || '';
       });
+      // Also add raw timestamp as taskId for easier access
+      if (row[0]) {
+        task.taskId = String(row[0]).trim();
+        task.timestamp = String(row[0]).trim();
+      }
       return task;
     });
 
@@ -988,17 +994,33 @@ async function deleteTask(taskId) {
     // Find task in Master Tasks
     let masterRowIndex = -1;
     let projectName = '';
+    const taskIdTrimmed = String(taskId).trim();
 
     for (let i = 1; i < masterRows.length; i++) {
-      if (masterRows[i][0] === taskId) {
+      const rowTaskId = masterRows[i][0] ? String(masterRows[i][0]).trim() : '';
+      // Try exact match first
+      if (rowTaskId === taskIdTrimmed) {
         masterRowIndex = i + 1; // +1 because Sheets API is 1-indexed
         projectName = masterRows[i][2] || '';
         break;
       }
+      // Also try matching if taskId is a substring (for partial matches)
+      if (rowTaskId.includes(taskIdTrimmed) || taskIdTrimmed.includes(rowTaskId)) {
+        // Only match if they're similar enough (same length or very close)
+        if (Math.abs(rowTaskId.length - taskIdTrimmed.length) <= 5) {
+          masterRowIndex = i + 1;
+          projectName = masterRows[i][2] || '';
+          break;
+        }
+      }
     }
 
     if (masterRowIndex === -1) {
-      throw new Error(`Task with ID ${taskId} not found`);
+      // Provide helpful error message
+      const availableTaskIds = masterRows.slice(1, 6).map((row, idx) => 
+        row[0] ? `Row ${idx + 2}: "${String(row[0]).substring(0, 30)}..."` : `Row ${idx + 2}: (empty)`
+      ).join(', ');
+      throw new Error(`Task with ID "${taskIdTrimmed}" not found. Available task IDs (first 5): ${availableTaskIds}`);
     }
 
     // Get sheet ID for Master Tasks tab
@@ -1046,7 +1068,8 @@ async function deleteTask(taskId) {
         let projectRowIndex = -1;
 
         for (let i = 1; i < projectRows.length; i++) {
-          if (projectRows[i][0] === taskId) {
+          const rowTaskId = projectRows[i][0] ? String(projectRows[i][0]).trim() : '';
+          if (rowTaskId === taskIdTrimmed || rowTaskId.includes(taskIdTrimmed) || taskIdTrimmed.includes(rowTaskId)) {
             projectRowIndex = i + 1;
             break;
           }
@@ -1082,10 +1105,93 @@ async function deleteTask(taskId) {
       taskId 
     };
   } catch (error) {
+    console.error('Error in deleteTask:', error);
     if (error.message.includes('Requested entity was not found')) {
       throw new Error(`Google Sheet not found. Check: 1) Sheet ID is correct (current: ${SPREADSHEET_ID}), 2) Sheet is shared with service account email, 3) Sheet exists. Original error: ${error.message}`);
     }
-    throw error;
+    // Re-throw with more context
+    throw new Error(`Failed to delete task: ${error.message}`);
+  }
+}
+
+async function findTasksByName(taskName, limit = 10) {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEET_ID environment variable is not set');
+  }
+
+  const auth = await getSheetsClient();
+  
+  try {
+    // Get all tasks
+    const allTasks = await getTasks({});
+    
+    if (allTasks.length === 0) {
+      return { matches: [], count: 0 };
+    }
+
+    const searchTerm = taskName.toLowerCase().trim();
+    
+    // Score tasks by how well they match
+    const scoredTasks = allTasks.map(task => {
+      const taskTitle = (task.tasktitle || task.taskTitle || '').toLowerCase();
+      const taskDetails = (task.taskdetails || task.taskDetails || '').toLowerCase();
+      const project = (task.project || '').toLowerCase();
+      
+      let score = 0;
+      
+      // Exact match gets highest score
+      if (taskTitle === searchTerm) {
+        score = 100;
+      }
+      // Starts with search term
+      else if (taskTitle.startsWith(searchTerm)) {
+        score = 80;
+      }
+      // Contains search term
+      else if (taskTitle.includes(searchTerm)) {
+        score = 60;
+      }
+      // Word match (each matching word adds points)
+      else {
+        const searchWords = searchTerm.split(/\s+/).filter(w => w.length > 2);
+        const titleWords = taskTitle.split(/\s+/);
+        searchWords.forEach(word => {
+          if (titleWords.some(tw => tw.includes(word) || word.includes(tw))) {
+            score += 10;
+          }
+        });
+      }
+      
+      // Bonus for details match
+      if (taskDetails.includes(searchTerm)) {
+        score += 5;
+      }
+      
+      // Bonus for project match
+      if (project.includes(searchTerm)) {
+        score += 3;
+      }
+      
+      return {
+        ...task,
+        matchScore: score,
+        taskId: task.taskId || task.timestamp || task.taskid || '',
+        taskTitle: task.tasktitle || task.taskTitle || '',
+        project: task.project || '',
+      };
+    })
+    .filter(task => task.matchScore > 0) // Only include tasks with some match
+    .sort((a, b) => b.matchScore - a.matchScore) // Sort by score descending
+    .slice(0, limit); // Limit results
+
+    return {
+      matches: scoredTasks,
+      count: scoredTasks.length,
+      searchTerm: taskName,
+    };
+  } catch (error) {
+    console.error('Error finding tasks by name:', error);
+    throw new Error(`Failed to find tasks: ${error.message}`);
   }
 }
 

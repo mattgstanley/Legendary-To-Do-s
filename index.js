@@ -4,7 +4,7 @@ if (require.main === module && !process.env.VERCEL) {
   } catch (e) {}
 }
 
-const { addTaskToSheets, getTasks, getSubcontractorTasks, createProjectTab, initializeMasterTab, addContractor, updateTask, deleteTask, deleteTasks, testConnection, verifyCredentials } = require('./google-sheets-actions');
+const { addTaskToSheets, getTasks, getSubcontractorTasks, createProjectTab, initializeMasterTab, addContractor, updateTask, deleteTask, deleteTasks, findTasksByName, testConnection, verifyCredentials } = require('./google-sheets-actions');
 const EmailAutomation = require('./email-automation');
 
 async function processTaskInput(taskData) {
@@ -120,6 +120,65 @@ async function deleteTasksInSheets(criteria) {
   }
 }
 
+async function findTasksByNameInSheets(taskName, limit) {
+  try {
+    const result = await findTasksByName(taskName, limit);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Error finding tasks by name:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function deleteTaskByName(taskName, taskId = null, deleteAll = false) {
+  try {
+    // If taskId is provided, delete directly
+    if (taskId) {
+      const result = await deleteTask(taskId);
+      return { success: true, ...result };
+    }
+
+    // Otherwise, find tasks by name
+    const searchResult = await findTasksByName(taskName, 10);
+    
+    if (searchResult.count === 0) {
+      return { 
+        success: false, 
+        error: `No tasks found matching "${taskName}"`,
+        matches: []
+      };
+    }
+
+    // If deleteAll is true, delete all matches
+    if (deleteAll) {
+      const taskIds = searchResult.matches.map(m => m.taskId).filter(id => id);
+      if (taskIds.length === 0) {
+        return { success: false, error: 'No valid task IDs found in matches' };
+      }
+      const result = await deleteTasks({ taskIds });
+      return { 
+        success: true, 
+        ...result,
+        message: `Deleted ${result.deletedCount} task(s) matching "${taskName}"`
+      };
+    }
+
+    // Return matches for confirmation
+    return {
+      success: true,
+      requiresConfirmation: true,
+      matches: searchResult.matches,
+      count: searchResult.count,
+      message: searchResult.count === 1 
+        ? `Found 1 matching task. Ready to delete.`
+        : `Found ${searchResult.count} matching tasks. Please confirm which one to delete.`
+    };
+  } catch (error) {
+    console.error('Error deleting task by name:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   processTaskInput,
   processMultipleTasks,
@@ -136,6 +195,8 @@ module.exports = {
   updateTaskInSheets,
   deleteTaskInSheets,
   deleteTasksInSheets,
+  findTasksByNameInSheets,
+  deleteTaskByName,
   testConnection,
   verifyCredentials
 };
@@ -313,6 +374,46 @@ if (require.main === module) {
       return res.json(await deleteTasksInSheets(req.body));
     } catch (error) {
       console.error('Error in bulk delete API:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }));
+
+  // Find tasks by name endpoint
+  app.post('/api/tasks/find', asyncHandler(async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') return res.status(200).end();
+
+    try {
+      const { taskName, limit } = req.body;
+      if (!taskName) {
+        return res.status(400).json({ success: false, error: 'taskName is required' });
+      }
+      return res.json(await findTasksByNameInSheets(taskName, limit || 10));
+    } catch (error) {
+      console.error('Error in find tasks API:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }));
+
+  // Delete task by name endpoint (with confirmation support)
+  app.post('/api/tasks/delete-by-name', asyncHandler(async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') return res.status(200).end();
+
+    try {
+      const { taskName, taskId, deleteAll } = req.body;
+      if (!taskName && !taskId) {
+        return res.status(400).json({ success: false, error: 'taskName or taskId is required' });
+      }
+      return res.json(await deleteTaskByName(taskName, taskId, deleteAll));
+    } catch (error) {
+      console.error('Error in delete by name API:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
   }));

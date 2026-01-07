@@ -511,6 +511,132 @@
           }
         }
       }
+    },
+    "/api/tasks/find": {
+      "post": {
+        "operationId": "find_tasks_by_name",
+        "summary": "Find tasks by name using fuzzy matching",
+        "description": "Searches for tasks by task name and returns matches sorted by relevance score",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "taskName": {
+                    "type": "string",
+                    "description": "The task name or partial name to search for"
+                  },
+                  "limit": {
+                    "type": "number",
+                    "description": "Maximum number of results to return",
+                    "default": 10
+                  }
+                },
+                "required": ["taskName"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tasks found successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "matches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "taskId": {"type": "string"},
+                          "taskTitle": {"type": "string"},
+                          "project": {"type": "string"},
+                          "matchScore": {"type": "number"}
+                        }
+                      }
+                    },
+                    "count": {"type": "number"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - taskName is required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/tasks/delete-by-name": {
+      "post": {
+        "operationId": "delete_task_by_name",
+        "summary": "Delete task by name with confirmation support",
+        "description": "Deletes a task by its name. If multiple matches found, returns them for confirmation. If one match found, confirms deletion. If taskId provided, deletes directly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "taskName": {
+                    "type": "string",
+                    "description": "The task name to search for and delete"
+                  },
+                  "taskId": {
+                    "type": "string",
+                    "description": "Optional: If provided, deletes this specific task directly (use after user confirms from matches)"
+                  },
+                  "deleteAll": {
+                    "type": "boolean",
+                    "description": "If true and multiple matches found, delete all matching tasks",
+                    "default": false
+                  }
+                },
+                "required": ["taskName"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task deletion result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "requiresConfirmation": {"type": "boolean"},
+                    "matches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "count": {"type": "number"},
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
     }
   }
 }
