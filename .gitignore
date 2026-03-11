@@ -11,3 +11,4 @@ node_modules
 
 # Google Cloud Service Account credentials (DO NOT COMMIT)
 legendary-home-*.json
+
