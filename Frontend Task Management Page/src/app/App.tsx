@@ -23,7 +23,7 @@ function App() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [roleUrls, setRoleUrls] = useState<Array<{ role: UserRole; path: string; url: string }>>([]);
   const [urlsDialogOpen, setUrlsDialogOpen] = useState(false);
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('open');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [activeTab, setActiveTab] = useState<TabId>('table');
   const [addTaskDialogOpen, setAddTaskDialogOpen] = useState(false);
 
@@ -229,8 +229,8 @@ function App() {
       <header className="legendary-header">
         <div className="logo-area">
           <img
-            src="/assets/legendary-homes-icon.svg"
-            alt=""
+            src="/assets/legendary-homes-logo.svg"
+            alt="Legendary Homes"
             className="logo-img"
           />
           <div className="logo-text">

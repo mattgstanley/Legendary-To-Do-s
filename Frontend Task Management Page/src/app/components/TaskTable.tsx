@@ -5,7 +5,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Task, TaskStatus, TaskPriority, FilterState } from '../types';
 import {
   Download,
-  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
@@ -522,21 +521,20 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
               <th onClick={() => handleSort('dueDate')}>Due Date <span className="sort-icon">⇅</span></th>
               <th onClick={() => handleSort('photoNeeded')}>Photo <span className="sort-icon">⇅</span></th>
               <th onClick={() => handleSort('status')}>Status <span className="sort-icon">⇅</span></th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredAndSortedTasks.length === 0 ? (
               <tr>
-                <td colSpan={13} className="empty-state">
-                  <div className="empty-icon">📋</div>
-                  <p>No tasks found matching your filters</p>
+                <td colSpan={12} className="empty-state">
+                  <div className="empty-icon">◇</div>
+                  <p>No tasks match your filters</p>
                 </td>
               </tr>
             ) : (
               filteredAndSortedTasks.map(task => {
                 const daysOpen = getDaysOpen(task.timestamp);
-                const daysClass = daysOpen > 7 ? 'td-days critical' : daysOpen <= 2 ? 'td-days fresh' : 'td-days';
+                const daysClass = daysOpen > 30 ? 'td-days critical' : daysOpen < 7 ? 'td-days fresh' : 'td-days';
                 return (
                   <tr key={task.id} style={isOverdue(task) ? { background: 'rgba(192,57,43,0.06)' } : undefined}>
                     <td className="td-muted">{task.timestamp.toLocaleString()}</td>
@@ -544,49 +542,15 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
                     <td className="td-project">{task.project}</td>
                     <td className="td-muted">{task.area || '—'}</td>
                     <td><span className="trade-pill">{task.trade || '—'}</span></td>
-                    <td>{task.taskTitle || '—'}</td>
-                    <td className="td-muted" style={{ maxWidth: 200 }}><span title={task.taskDetails || ''}>{task.taskDetails ? `${task.taskDetails.slice(0, 40)}${task.taskDetails.length > 40 ? '…' : ''}` : '—'}</span></td>
-                    <td>{task.assignedTo || '—'}</td>
+                    <td style={{ maxWidth: 180, fontSize: '12px' }}>{task.taskTitle || '—'}</td>
+                    <td className="td-muted" style={{ maxWidth: 200, fontSize: '11px' }} title={task.taskDetails || ''}>{task.taskDetails ? `${task.taskDetails.slice(0, 50)}${task.taskDetails.length > 50 ? '…' : ''}` : '—'}</td>
+                    <td className="td-muted">{task.assignedTo || '—'}</td>
                     <td><span className={getPriorityBadgeClass(task.priority)}>{task.priority}</span></td>
-                    <td className={isOverdue(task) ? 'td-muted' : ''} style={isOverdue(task) ? { color: 'var(--red)', fontWeight: 600 } : undefined}>
+                    <td className={isOverdue(task) ? '' : 'td-muted'} style={isOverdue(task) ? { color: 'var(--red)', fontWeight: 600 } : undefined}>
                       {task.dueDate ? task.dueDate.toLocaleDateString() : '—'}
                     </td>
-                    <td className={task.photoNeeded ? 'photo-yes' : 'photo-no'}>{task.photoNeeded ? 'Yes' : 'No'}</td>
-                    <td>
-                      <Select
-                        value={task.status}
-                        onValueChange={(val) => onUpdateTask(task.id, { status: val as TaskStatus })}
-                      >
-                        <SelectTrigger className={`status-select-trigger ${task.status === 'Open' ? 'status-open' : ''}`} style={{ minWidth: 90 }}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Open">Open</SelectItem>
-                          <SelectItem value="In Progress">In Progress</SelectItem>
-                          <SelectItem value="Closed">Closed</SelectItem>
-                          <SelectItem value="Blocked">Blocked</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td>
-                      {canDelete ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: '4px 8px', fontSize: 10 }}
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete this task?')) {
-                              onDeleteTask(task.id);
-                              toast.success('Task deleted');
-                            }
-                          }}
-                        >
-                          <Trash2 className="size-4" style={{ color: 'var(--red)' }} />
-                        </button>
-                      ) : (
-                        <span className="td-muted">—</span>
-                      )}
-                    </td>
+                    <td>{task.photoNeeded ? <span className="photo-yes">Yes</span> : <span className="photo-no">—</span>}</td>
+                    <td><span className={getStatusBadgeClass(task.status)}>{task.status}</span></td>
                   </tr>
                 );
               })
