@@ -1,32 +1,17 @@
-import { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Task, TaskStatus, TaskPriority, FilterState } from '../types';
-import { 
-  Search, 
-  Filter, 
-  Download, 
-  Trash2, 
-  Calendar, 
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Plus,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  XCircle
+import {
+  Download,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Switch } from './ui/switch';
-import { Separator } from './ui/separator';
 
 interface TaskTableProps {
   tasks: Task[];
@@ -36,6 +21,7 @@ interface TaskTableProps {
   canAdd?: boolean;
   canDelete?: boolean;
   canExport?: boolean;
+  quickFilter?: 'all' | 'open' | 'overdue' | 'urgent';
 }
 
 type SortField = keyof Task;
@@ -43,7 +29,7 @@ type SortDirection = 'asc' | 'desc' | null;
 
 const trades = ['Tile', 'Plumbing', 'Landscaping', 'Electrical', 'Drywall', 'Paint', 'HVAC', 'Flooring', 'Cabinets', 'Framing', 'Other'];
 
-export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd = true, canDelete = true, canExport = true }: TaskTableProps) {
+export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd = true, canDelete = true, canExport = true, quickFilter = 'all' }: TaskTableProps) {
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     project: 'all',
@@ -53,14 +39,23 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
     priority: 'all',
     status: 'all',
     photoNeeded: 'all',
-    showOverdueOnly: false,
-    showOpenOnly: false,
-    showUrgentOnly: false,
+    showOverdueOnly: quickFilter === 'overdue',
+    showOpenOnly: quickFilter === 'open',
+    showUrgentOnly: quickFilter === 'urgent',
   });
 
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
+
+  useEffect(() => {
+    setFilters((prev) => ({
+      ...prev,
+      showOpenOnly: quickFilter === 'open',
+      showOverdueOnly: quickFilter === 'overdue',
+      showUrgentOnly: quickFilter === 'urgent',
+    }));
+  }, [quickFilter]);
 
   // New task form state
   const [newTask, setNewTask] = useState({
@@ -270,23 +265,29 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
     toast.info('Filters reset');
   };
 
-  const getStatusIcon = (status: TaskStatus) => {
-    switch (status) {
-      case 'Open': return <Clock className="size-4 text-orange-600" />;
-      case 'In Progress': return <AlertCircle className="size-4 text-blue-600" />;
-      case 'Closed': return <CheckCircle2 className="size-4 text-green-600" />;
-      case 'Blocked': return <XCircle className="size-4 text-red-600" />;
+  const getPriorityBadgeClass = (priority: TaskPriority) => {
+    switch (priority) {
+      case 'Urgent': return 'badge-lh badge-high';
+      case 'High': return 'badge-lh badge-high';
+      case 'Medium': return 'badge-lh badge-medium';
+      case 'Low': return 'badge-lh badge-low';
+      default: return 'badge-lh badge-medium';
     }
   };
 
-  const getPriorityColor = (priority: TaskPriority) => {
-    switch (priority) {
-      case 'Urgent': return 'destructive';
-      case 'High': return 'destructive';
-      case 'Medium': return 'secondary';
-      case 'Low': return 'outline';
+  const getStatusBadgeClass = (status: TaskStatus) => {
+    switch (status) {
+      case 'Open': return 'badge-lh badge-open';
+      case 'In Progress': return 'badge-lh badge-progress';
+      case 'Closed': return 'badge-lh badge-done';
+      case 'Blocked': return 'badge-lh badge-blocked';
+      default: return 'badge-lh badge-open';
     }
   };
+
+  const activeFilterCount = Object.values(filters).filter(v =>
+    v !== '' && v !== 'all' && v !== false
+  ).length;
 
   const isOverdue = (task: Task) => {
     return task.dueDate && task.dueDate < new Date() && task.status !== 'Closed';
@@ -303,65 +304,79 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
     return <ArrowDown className="size-4 ml-1 text-blue-600" />;
   };
 
-  const activeFilterCount = Object.values(filters).filter(v => 
-    v !== '' && v !== 'all' && v !== false
-  ).length;
-
   return (
-    <div className="space-y-4">
-      {/* Quick Filter Buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={filters.showOpenOnly ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilters({ ...filters, showOpenOnly: !filters.showOpenOnly })}
+    <>
+      <div className="filter-bar">
+        <div className="search-wrap">
+          <span className="search-icon">⌕</span>
+          <input
+            className="search-input"
+            type="text"
+            placeholder="Search tasks..."
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          />
+        </div>
+        <select
+          className="filter-select"
+          value={filters.project}
+          onChange={(e) => setFilters({ ...filters, project: e.target.value })}
         >
-          <Clock className="size-4 mr-2" />
-          Open Only
-        </Button>
-        <Button
-          variant={filters.showOverdueOnly ? 'destructive' : 'outline'}
-          size="sm"
-          onClick={() => setFilters({ ...filters, showOverdueOnly: !filters.showOverdueOnly })}
+          <option value="all">All Projects</option>
+          {projects.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select
+          className="filter-select"
+          value={filters.trade}
+          onChange={(e) => setFilters({ ...filters, trade: e.target.value })}
         >
-          <AlertCircle className="size-4 mr-2" />
-          Overdue Only
-        </Button>
-        <Button
-          variant={filters.showUrgentOnly ? 'destructive' : 'outline'}
-          size="sm"
-          onClick={() => setFilters({ ...filters, showUrgentOnly: !filters.showUrgentOnly })}
+          <option value="all">All Trades</option>
+          {tradeList.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select
+          className="filter-select"
+          value={filters.priority}
+          onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
         >
-          <AlertCircle className="size-4 mr-2" />
-          Urgent Only
-        </Button>
-        {activeFilterCount > 0 && (
-          <Button variant="ghost" size="sm" onClick={resetFilters}>
-            Clear Filters ({activeFilterCount})
-          </Button>
-        )}
+          <option value="all">All Priorities</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Urgent">Urgent</option>
+        </select>
+        <select
+          className="filter-select"
+          value={filters.status}
+          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+        >
+          <option value="all">All Statuses</option>
+          <option value="Open">Open</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Closed">Closed</option>
+          <option value="Blocked">Blocked</option>
+        </select>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Master Task List</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
-                Showing {filteredAndSortedTasks.length} of {tasks.length} tasks
-              </p>
-            </div>
-            <div className="flex gap-2">
+      <div className="table-container">
+        <div className="table-header-row">
+          <div>
+            <div className="table-title">Master Task List</div>
+            <div className="table-count">Showing {filteredAndSortedTasks.length} of {tasks.length} tasks</div>
+          </div>
+          <div className="table-actions">
+            {canExport && (
+              <button type="button" className="btn btn-ghost" onClick={handleExport}>
+                ↓ Export
+              </button>
+            )}
+            {canAdd && (
               <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                {canAdd && (
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="size-4 mr-2" />
-                      Add Task
-                    </Button>
-                  </DialogTrigger>
-                )}
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogTrigger asChild>
+                  <button type="button" className="btn btn-gold" onClick={() => setShowAddDialog(true)}>
+                    + Add Task
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" style={{ fontFamily: "'DM Sans', sans-serif" }}>
                   <DialogHeader>
                     <DialogTitle>Add New Task</DialogTitle>
                     <DialogDescription>Create a new task in the system</DialogDescription>
@@ -484,271 +499,97 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              {canExport && (
-                <Button variant="outline" onClick={handleExport}>
-                  <Download className="size-4 mr-2" />
-                  Export
-                </Button>
-              )}
-            </div>
+            )}
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Advanced Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-3">
-            <div className="col-span-2 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              <Input
-                placeholder="Search tasks..."
-                value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                className="pl-9"
-              />
-            </div>
+        </div>
 
-            <Select value={filters.project || undefined} onValueChange={(val) => setFilters({ ...filters, project: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Projects" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
-                {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.area || undefined} onValueChange={(val) => setFilters({ ...filters, area: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Areas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Areas</SelectItem>
-                {areas.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.trade || undefined} onValueChange={(val) => setFilters({ ...filters, trade: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Trades" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Trades</SelectItem>
-                {tradeList.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.assignedTo || undefined} onValueChange={(val) => setFilters({ ...filters, assignedTo: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Assignees" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Assignees</SelectItem>
-                {assignees.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.priority || undefined} onValueChange={(val) => setFilters({ ...filters, priority: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Priorities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priorities</SelectItem>
-                <SelectItem value="Low">Low</SelectItem>
-                <SelectItem value="Medium">Medium</SelectItem>
-                <SelectItem value="High">High</SelectItem>
-                <SelectItem value="Urgent">Urgent</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.status || undefined} onValueChange={(val) => setFilters({ ...filters, status: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="Open">Open</SelectItem>
-                <SelectItem value="In Progress">In Progress</SelectItem>
-                <SelectItem value="Closed">Closed</SelectItem>
-                <SelectItem value="Blocked">Blocked</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          {/* Table */}
-          <div className="border rounded-lg overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('timestamp')}>
-                    <div className="flex items-center">
-                      Timestamp
-                      <SortIcon field="timestamp" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('timestamp')}>
-                    <div className="flex items-center">
-                      Days Old
-                      <SortIcon field="timestamp" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('project')}>
-                    <div className="flex items-center">
-                      Project
-                      <SortIcon field="project" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('area')}>
-                    <div className="flex items-center">
-                      Area
-                      <SortIcon field="area" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('trade')}>
-                    <div className="flex items-center">
-                      Trade
-                      <SortIcon field="trade" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('taskTitle')}>
-                    <div className="flex items-center">
-                      Task Title
-                      <SortIcon field="taskTitle" />
-                    </div>
-                  </TableHead>
-                  <TableHead>Task Details</TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('assignedTo')}>
-                    <div className="flex items-center">
-                      Assigned To
-                      <SortIcon field="assignedTo" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('priority')}>
-                    <div className="flex items-center">
-                      Priority
-                      <SortIcon field="priority" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('dueDate')}>
-                    <div className="flex items-center">
-                      Due Date
-                      <SortIcon field="dueDate" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('photoNeeded')}>
-                    <div className="flex items-center">
-                      Photo
-                      <SortIcon field="photoNeeded" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => handleSort('status')}>
-                    <div className="flex items-center">
-                      Status
-                      <SortIcon field="status" />
-                    </div>
-                  </TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedTasks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={13} className="text-center text-gray-500 py-8">
-                      No tasks found matching your filters
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredAndSortedTasks.map(task => (
-                    <TableRow key={task.id} className={isOverdue(task) ? 'bg-red-50' : ''}>
-                      <TableCell className="text-sm text-gray-600">
-                        {task.timestamp.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <span className={getDaysOpen(task.timestamp) > 7 ? 'text-red-600 font-semibold' : ''}>
-                          {getDaysOpen(task.timestamp)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-medium">{task.project}</TableCell>
-                      <TableCell>{task.area || <span className="text-gray-400">-</span>}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{task.trade || '-'}</Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{task.taskTitle || <span className="text-gray-400">-</span>}</TableCell>
-                      <TableCell className="max-w-xs">
-                        <p className="text-sm truncate" title={task.taskDetails || ''}>
-                          {task.taskDetails || <span className="text-gray-400">-</span>}
-                        </p>
-                      </TableCell>
-                      <TableCell>{task.assignedTo || <span className="text-gray-400">-</span>}</TableCell>
-                      <TableCell>
-                        <Badge variant={getPriorityColor(task.priority)}>
-                          {task.priority}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {task.dueDate ? (
-                          <div className="flex items-center gap-1">
-                            <Calendar className="size-3 text-gray-400" />
-                            <span className={isOverdue(task) ? 'text-red-600 font-semibold' : ''}>
-                              {task.dueDate.toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {task.photoNeeded ? (
-                          <Badge variant="secondary">Yes</Badge>
-                        ) : (
-                          <span className="text-gray-400">No</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={task.status}
-                          onValueChange={(val) => onUpdateTask(task.id, { status: val as TaskStatus })}
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th onClick={() => handleSort('timestamp')}>Timestamp <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('timestamp')}>Days Old <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('project')}>Project <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('area')}>Area <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('trade')}>Trade <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('taskTitle')}>Task Title <span className="sort-icon">⇅</span></th>
+              <th>Task Details</th>
+              <th onClick={() => handleSort('assignedTo')}>Assigned To <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('priority')}>Priority <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('dueDate')}>Due Date <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('photoNeeded')}>Photo <span className="sort-icon">⇅</span></th>
+              <th onClick={() => handleSort('status')}>Status <span className="sort-icon">⇅</span></th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredAndSortedTasks.length === 0 ? (
+              <tr>
+                <td colSpan={13} className="empty-state">
+                  <div className="empty-icon">📋</div>
+                  <p>No tasks found matching your filters</p>
+                </td>
+              </tr>
+            ) : (
+              filteredAndSortedTasks.map(task => {
+                const daysOpen = getDaysOpen(task.timestamp);
+                const daysClass = daysOpen > 7 ? 'td-days critical' : daysOpen <= 2 ? 'td-days fresh' : 'td-days';
+                return (
+                  <tr key={task.id} style={isOverdue(task) ? { background: 'rgba(192,57,43,0.06)' } : undefined}>
+                    <td className="td-muted">{task.timestamp.toLocaleString()}</td>
+                    <td className={daysClass}>{daysOpen}</td>
+                    <td className="td-project">{task.project}</td>
+                    <td className="td-muted">{task.area || '—'}</td>
+                    <td><span className="trade-pill">{task.trade || '—'}</span></td>
+                    <td>{task.taskTitle || '—'}</td>
+                    <td className="td-muted" style={{ maxWidth: 200 }}><span title={task.taskDetails || ''}>{task.taskDetails ? `${task.taskDetails.slice(0, 40)}${task.taskDetails.length > 40 ? '…' : ''}` : '—'}</span></td>
+                    <td>{task.assignedTo || '—'}</td>
+                    <td><span className={getPriorityBadgeClass(task.priority)}>{task.priority}</span></td>
+                    <td className={isOverdue(task) ? 'td-muted' : ''} style={isOverdue(task) ? { color: 'var(--red)', fontWeight: 600 } : undefined}>
+                      {task.dueDate ? task.dueDate.toLocaleDateString() : '—'}
+                    </td>
+                    <td className={task.photoNeeded ? 'photo-yes' : 'photo-no'}>{task.photoNeeded ? 'Yes' : 'No'}</td>
+                    <td>
+                      <Select
+                        value={task.status}
+                        onValueChange={(val) => onUpdateTask(task.id, { status: val as TaskStatus })}
+                      >
+                        <SelectTrigger className="w-32 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Open">Open</SelectItem>
+                          <SelectItem value="In Progress">In Progress</SelectItem>
+                          <SelectItem value="Closed">Closed</SelectItem>
+                          <SelectItem value="Blocked">Blocked</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: '4px 8px', fontSize: 10 }}
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this task?')) {
+                              onDeleteTask(task.id);
+                              toast.success('Task deleted');
+                            }
+                          }}
                         >
-                          <SelectTrigger className="w-32">
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(task.status)}
-                              <SelectValue />
-                            </div>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Open">Open</SelectItem>
-                            <SelectItem value="In Progress">In Progress</SelectItem>
-                            <SelectItem value="Closed">Closed</SelectItem>
-                            <SelectItem value="Blocked">Blocked</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        {canDelete ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm('Are you sure you want to delete this task?')) {
-                                onDeleteTask(task.id);
-                                toast.success('Task deleted');
-                              }
-                            }}
-                          >
-                            <Trash2 className="size-4 text-red-600" />
-                          </Button>
-                        ) : (
-                          <span className="text-gray-400 text-sm">-</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+                          <Trash2 className="size-4" style={{ color: 'var(--red)' }} />
+                        </button>
+                      ) : (
+                        <span className="td-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

@@ -114,72 +114,50 @@ export function Dashboard({ tasks }: DashboardProps) {
 
   return (
     <div className="space-y-6">
-      {/* Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">{stats.total}</div>
-              <div className="text-xs text-gray-600 mt-1">Total Tasks</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-orange-600">{stats.open}</div>
-              <div className="text-xs text-gray-600 mt-1">Open</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-yellow-600">{stats.inProgress}</div>
-              <div className="text-xs text-gray-600 mt-1">In Progress</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">{stats.closed}</div>
-              <div className="text-xs text-gray-600 mt-1">Closed</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-red-600">{stats.overdue}</div>
-              <div className="text-xs text-gray-600 mt-1">Overdue</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">{stats.urgent}</div>
-              <div className="text-xs text-gray-600 mt-1">Urgent</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-pink-600">{stats.blocked}</div>
-              <div className="text-xs text-gray-600 mt-1">Blocked</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-indigo-600">{stats.completionRate}%</div>
-              <div className="text-xs text-gray-600 mt-1">Complete</div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats Overview — Legendary branded stat cards */}
+      <div className="stats-row">
+        <div className="stat-card">
+          <div className="stat-label">Total Tasks</div>
+          <div className="stat-value">{stats.total}</div>
+          <div className="stat-sub">all projects</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Open</div>
+          <div className="stat-value">{stats.open}</div>
+          <div className="stat-sub">pending</div>
+        </div>
+        <div className="stat-card overdue">
+          <div className="stat-label">Overdue</div>
+          <div className="stat-value">{stats.overdue}</div>
+          <div className="stat-sub">need attention</div>
+        </div>
+        <div className="stat-card urgent">
+          <div className="stat-label">Urgent</div>
+          <div className="stat-value">{stats.urgent}</div>
+          <div className="stat-sub">high priority</div>
+        </div>
+      </div>
+      <div className="stats-row">
+        <div className="stat-card">
+          <div className="stat-label">In Progress</div>
+          <div className="stat-value">{stats.inProgress}</div>
+          <div className="stat-sub">active</div>
+        </div>
+        <div className="stat-card done">
+          <div className="stat-label">Closed</div>
+          <div className="stat-value">{stats.closed}</div>
+          <div className="stat-sub">completed</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Blocked</div>
+          <div className="stat-value">{stats.blocked}</div>
+          <div className="stat-sub">blocked</div>
+        </div>
+        <div className="stat-card done">
+          <div className="stat-label">Complete</div>
+          <div className="stat-value">{stats.completionRate}%</div>
+          <div className="stat-sub">completion rate</div>
+        </div>
       </div>
 
       {/* Overdue Alert */}

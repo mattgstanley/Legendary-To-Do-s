@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { TaskTable } from './components/TaskTable';
 import { SupervisorView } from './components/SupervisorView';
@@ -6,12 +6,14 @@ import { SubcontractorView } from './components/SubcontractorView';
 import { Task, Project } from './types';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
-import { Building2, Copy, Check, Share2 } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+import { Copy, Check, Share2, RefreshCw } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { apiService } from './services/api';
 import { UserRole, getRoleFromUrl, getRolePermissions, getAllRoleUrls } from './utils/roles';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './components/ui/dialog';
+
+type QuickFilter = 'all' | 'open' | 'overdue' | 'urgent';
+type TabId = 'table' | 'dashboard' | 'supervisor';
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -21,6 +23,8 @@ function App() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [roleUrls, setRoleUrls] = useState<Array<{ role: UserRole; path: string; url: string }>>([]);
   const [urlsDialogOpen, setUrlsDialogOpen] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('open');
+  const [activeTab, setActiveTab] = useState<TabId>('table');
 
   useEffect(() => {
     const uniqueProjects = Array.from(
@@ -176,12 +180,24 @@ function App() {
     }
   };
 
+  const stats = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const totalOpen = tasks.filter(t => t.status === 'Open' || t.status === 'In Progress').length;
+    const overdue = tasks.filter(t => t.dueDate && t.dueDate < now && t.status !== 'Closed').length;
+    const urgent = tasks.filter(t => t.priority === 'Urgent' && t.status !== 'Closed').length;
+    const completedThisWeek = tasks.filter(t => t.status === 'Closed' && t.timestamp >= startOfWeek).length;
+    return { totalOpen, overdue, urgent, completedThisWeek };
+  }, [tasks]);
+
   if (!userRole) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="legendary-loading">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="spinner mx-auto" />
+          <p style={{ marginTop: 16, fontSize: 14 }}>Loading...</p>
         </div>
       </div>
     );
@@ -189,10 +205,10 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="legendary-loading">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading tasks...</p>
+          <div className="spinner mx-auto" />
+          <p style={{ marginTop: 16, fontSize: 14 }}>Loading tasks...</p>
         </div>
       </div>
     );
@@ -208,129 +224,221 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="border-b bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img 
-                src="/assets/legendary-homes-logo.png" 
-                alt="Legendary Homes Cincinnati" 
-                className="h-16 w-auto object-contain"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              {userRole === 'admin' && (
-                <Dialog open={urlsDialogOpen} onOpenChange={setUrlsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700">
-                      <Share2 className="size-4 mr-2" />
-                      Share URLs
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Share Access URLs</DialogTitle>
-                      <DialogDescription>
-                        Copy and share these URLs with users to grant them access to specific role views.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3 mt-4">
-                      {roleUrls.length > 0 ? (
-                        roleUrls.map(({ role, url, path }) => (
-                          <div key={role} className="p-4 border rounded-lg bg-gray-50">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="font-semibold text-gray-900 capitalize">{role}</span>
-                                  <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">/{path}</span>
-                                </div>
-                                <div className="text-sm text-gray-600 font-mono break-all mb-2">{url}</div>
-                                <div className="text-xs text-gray-500">
-                                  {role === 'admin' && 'Full access: All views, add/edit/delete tasks, export'}
-                                  {role === 'supervisor' && 'Can add/edit tasks, view all, export. Cannot delete'}
-                                  {role === 'subcontractor' && 'View assigned tasks, update status. Cannot add/delete/export'}
-                                </div>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => copyUrl(url, role)}
-                              >
-                                {copiedUrl === url ? (
-                                  <>
-                                    <Check className="size-4 mr-2" />
-                                    Copied
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="size-4 mr-2" />
-                                    Copy
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-center py-8 text-gray-500">
-                          <p>Loading URLs...</p>
-                        </div>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-              <Button onClick={loadTasks} variant="outline" size="sm">
-                Refresh
-              </Button>
-            </div>
+    <div className="legendary-app">
+      <header className="legendary-header">
+        <div className="logo-area">
+          <img
+            src="/assets/legendary-homes-logo.png"
+            alt="Legendary Homes Cincinnati"
+            className="logo-img"
+          />
+          <div className="logo-text">
+            <span className="logo-name">Legendary Homes</span>
+            <span className="logo-sub">Cincinnati · Task Command</span>
           </div>
         </div>
-      </div>
+        <div className="header-right">
+          {userRole === 'admin' && (
+            <Dialog open={urlsDialogOpen} onOpenChange={setUrlsDialogOpen}>
+              <DialogTrigger asChild>
+                <button type="button" className="btn btn-ghost">
+                  <Share2 style={{ width: 14, height: 14 }} />
+                  Share
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+                <DialogHeader>
+                  <DialogTitle>Share Access URLs</DialogTitle>
+                  <DialogDescription>
+                    Copy and share these URLs with users to grant them access to specific role views.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 mt-4">
+                  {roleUrls.length > 0 ? (
+                    roleUrls.map(({ role, url, path }) => (
+                      <div key={role} className="p-4 border rounded-lg bg-gray-50">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-semibold text-gray-900 capitalize">{role}</span>
+                              <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">/{path}</span>
+                            </div>
+                            <div className="text-sm text-gray-600 font-mono break-all mb-2">{url}</div>
+                            <div className="text-xs text-gray-500">
+                              {role === 'admin' && 'Full access: All views, add/edit/delete tasks, export'}
+                              {role === 'supervisor' && 'Can add/edit tasks, view all, export. Cannot delete'}
+                              {role === 'subcontractor' && 'View assigned tasks, update status. Cannot add/delete/export'}
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyUrl(url, role)}
+                          >
+                            {copiedUrl === url ? (
+                              <>
+                                <Check className="size-4 mr-2" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="size-4 mr-2" />
+                                Copy
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>Loading URLs...</p>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+          <button type="button" className="btn btn-ghost" onClick={loadTasks}>
+            <RefreshCw style={{ width: 14, height: 14 }} />
+            Refresh
+          </button>
+        </div>
+      </header>
 
-      <div className="container mx-auto px-4 py-6">
+      <main className="legendary-main">
+        <div className="page-header">
+          <div className="page-title-block">
+            <h1>Task Command <span>Center</span></h1>
+            <p>Manage and track tasks across all projects</p>
+          </div>
+        {(userRole === 'admin' || userRole === 'supervisor') && (activeTab === 'table' || activeTab === 'supervisor') && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={`filter-pill ${quickFilter === 'open' ? 'active' : ''}`}
+                onClick={() => setQuickFilter('open')}
+              >
+                Open Only
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${quickFilter === 'overdue' ? 'active' : ''}`}
+                onClick={() => setQuickFilter('overdue')}
+              >
+                Overdue
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${quickFilter === 'urgent' ? 'active' : ''}`}
+                onClick={() => setQuickFilter('urgent')}
+              >
+                Urgent
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${quickFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setQuickFilter('all')}
+              >
+                All Tasks
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="stats-row">
+          <div className="stat-card">
+            <div className="stat-label">Total Open</div>
+            <div className="stat-value">{stats.totalOpen}</div>
+            <div className="stat-sub">across all projects</div>
+          </div>
+          <div className="stat-card overdue">
+            <div className="stat-label">Overdue</div>
+            <div className="stat-value">{stats.overdue}</div>
+            <div className="stat-sub">need immediate attention</div>
+          </div>
+          <div className="stat-card urgent">
+            <div className="stat-label">High Priority</div>
+            <div className="stat-value">{stats.urgent}</div>
+            <div className="stat-sub">urgent tasks</div>
+          </div>
+          <div className="stat-card done">
+            <div className="stat-label">Completed</div>
+            <div className="stat-value">{stats.completedThisWeek}</div>
+            <div className="stat-sub">this week</div>
+          </div>
+        </div>
+
         {userRole === 'admin' && (
-          <Tabs defaultValue="table" className="w-full">
-            <TabsList className="mb-6">
-              <TabsTrigger value="table">Task Table</TabsTrigger>
-              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            </TabsList>
-            <TabsContent value="table">
-              <TaskTable 
+          <>
+            <div className="tabs">
+              <button
+                type="button"
+                className={`tab ${activeTab === 'table' ? 'active' : ''}`}
+                onClick={() => setActiveTab('table')}
+              >
+                Task Table
+              </button>
+              <button
+                type="button"
+                className={`tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('dashboard')}
+              >
+                Dashboard
+              </button>
+            </div>
+            {activeTab === 'table' && (
+              <TaskTable
                 tasks={tasks}
                 onUpdateTask={handleUpdateTask}
                 onDeleteTask={permissions.canDeleteTasks ? handleDeleteTask : () => {}}
-                onAddTask={permissions.canAddTasks ? handleAddTask : () => {}}
+                onAddTask={handleAddTask}
                 canAdd={permissions.canAddTasks}
                 canDelete={permissions.canDeleteTasks}
                 canExport={permissions.canExport}
+                quickFilter={quickFilter}
               />
-            </TabsContent>
-            <TabsContent value="dashboard">
-              <Dashboard tasks={tasks} />
-            </TabsContent>
-          </Tabs>
+            )}
+            {activeTab === 'dashboard' && <Dashboard tasks={tasks} />}
+          </>
         )}
 
         {userRole === 'supervisor' && (
-          <Tabs defaultValue="supervisor" className="w-full">
-            <TabsList className="mb-6">
-              <TabsTrigger value="supervisor">Supervisor View</TabsTrigger>
-              <TabsTrigger value="table">Task Table</TabsTrigger>
-              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            </TabsList>
-            <TabsContent value="supervisor">
-              <SupervisorView 
+          <>
+            <div className="tabs">
+              <button
+                type="button"
+                className={`tab ${activeTab === 'supervisor' ? 'active' : ''}`}
+                onClick={() => setActiveTab('supervisor')}
+              >
+                Supervisor View
+              </button>
+              <button
+                type="button"
+                className={`tab ${activeTab === 'table' ? 'active' : ''}`}
+                onClick={() => setActiveTab('table')}
+              >
+                Task Table
+              </button>
+              <button
+                type="button"
+                className={`tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('dashboard')}
+              >
+                Dashboard
+              </button>
+            </div>
+            {activeTab === 'supervisor' && (
+              <SupervisorView
                 tasks={tasks}
                 projects={projects}
                 onAddTask={handleAddTask}
                 onUpdateTask={handleUpdateTask}
                 onAddProject={(project) => setProjects([...projects, { ...project, id: Date.now().toString() }])}
               />
-            </TabsContent>
-            <TabsContent value="table">
-              <TaskTable 
+            )}
+            {activeTab === 'table' && (
+              <TaskTable
                 tasks={tasks}
                 onUpdateTask={handleUpdateTask}
                 onDeleteTask={() => {}}
@@ -338,18 +446,17 @@ function App() {
                 canAdd={permissions.canAddTasks}
                 canDelete={false}
                 canExport={permissions.canExport}
+                quickFilter={quickFilter}
               />
-            </TabsContent>
-            <TabsContent value="dashboard">
-              <Dashboard tasks={tasks} />
-            </TabsContent>
-          </Tabs>
+            )}
+            {activeTab === 'dashboard' && <Dashboard tasks={tasks} />}
+          </>
         )}
 
         {userRole === 'subcontractor' && (
           <SubcontractorView tasks={tasks} />
         )}
-      </div>
+      </main>
 
       <Toaster />
     </div>
