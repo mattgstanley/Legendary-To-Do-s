@@ -23,6 +23,8 @@
   --orange:     #d4742a;
   --green:      #4a8c5c;
   --blue:       #3a6b8a;
+  --blue-light: #e8f0f7;
+  --blue-light-border: #7ba3bc;
   --white:      #ffffff;
 }
 
@@ -74,6 +76,7 @@
   width: auto;
   object-fit: contain;
   filter: none;
+  display: block;
 }
 
 .logo-text {
@@ -482,6 +485,23 @@
 
 .photo-yes { color: var(--red); font-weight: 600; font-size: 11px; }
 .photo-no  { color: var(--muted); font-size: 11px; }
+
+/* Status OPEN button in table (design: light blue bg, dark blue text) */
+.status-select-trigger {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 2px;
+}
+.status-select-trigger.status-open {
+  background: var(--blue-light) !important;
+  border-color: var(--blue-light-border) !important;
+  color: var(--navy) !important;
+}
+.status-select-trigger.status-open:hover {
+  background: #dce8f0 !important;
+}
 
 /* Modal */
 .modal-overlay {

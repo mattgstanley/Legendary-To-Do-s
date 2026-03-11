@@ -25,6 +25,7 @@ function App() {
   const [urlsDialogOpen, setUrlsDialogOpen] = useState(false);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('open');
   const [activeTab, setActiveTab] = useState<TabId>('table');
+  const [addTaskDialogOpen, setAddTaskDialogOpen] = useState(false);
 
   useEffect(() => {
     const uniqueProjects = Array.from(
@@ -228,8 +229,8 @@ function App() {
       <header className="legendary-header">
         <div className="logo-area">
           <img
-            src="/assets/legendary-homes-logo.png"
-            alt="Legendary Homes Cincinnati"
+            src="/assets/legendary-homes-icon.svg"
+            alt=""
             className="logo-img"
           />
           <div className="logo-text">
@@ -303,6 +304,15 @@ function App() {
             <RefreshCw style={{ width: 14, height: 14 }} />
             Refresh
           </button>
+          {(userRole === 'admin' || userRole === 'supervisor') && permissions.canAddTasks && (
+            <button
+              type="button"
+              className="btn btn-gold"
+              onClick={() => setAddTaskDialogOpen(true)}
+            >
+              + Add Task
+            </button>
+          )}
         </div>
       </header>
 
@@ -310,7 +320,7 @@ function App() {
         <div className="page-header">
           <div className="page-title-block">
             <h1>Task Command <span>Center</span></h1>
-            <p>Manage and track tasks across all projects</p>
+            <p>All active jobs · Real-time · Updated just now</p>
           </div>
         {(userRole === 'admin' || userRole === 'supervisor') && (activeTab === 'table' || activeTab === 'supervisor') && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -319,21 +329,21 @@ function App() {
                 className={`filter-pill ${quickFilter === 'open' ? 'active' : ''}`}
                 onClick={() => setQuickFilter('open')}
               >
-                Open Only
+                ⏱ Open Only
               </button>
               <button
                 type="button"
                 className={`filter-pill ${quickFilter === 'overdue' ? 'active' : ''}`}
                 onClick={() => setQuickFilter('overdue')}
               >
-                Overdue
+                ⚠ Overdue
               </button>
               <button
                 type="button"
                 className={`filter-pill ${quickFilter === 'urgent' ? 'active' : ''}`}
                 onClick={() => setQuickFilter('urgent')}
               >
-                Urgent
+                🔴 Urgent
               </button>
               <button
                 type="button"
@@ -397,6 +407,8 @@ function App() {
                 canDelete={permissions.canDeleteTasks}
                 canExport={permissions.canExport}
                 quickFilter={quickFilter}
+                addDialogOpen={addTaskDialogOpen}
+                onAddDialogOpenChange={setAddTaskDialogOpen}
               />
             )}
             {activeTab === 'dashboard' && <Dashboard tasks={tasks} />}
@@ -447,6 +459,8 @@ function App() {
                 canDelete={false}
                 canExport={permissions.canExport}
                 quickFilter={quickFilter}
+                addDialogOpen={addTaskDialogOpen}
+                onAddDialogOpenChange={setAddTaskDialogOpen}
               />
             )}
             {activeTab === 'dashboard' && <Dashboard tasks={tasks} />}

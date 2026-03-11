@@ -22,6 +22,8 @@ interface TaskTableProps {
   canDelete?: boolean;
   canExport?: boolean;
   quickFilter?: 'all' | 'open' | 'overdue' | 'urgent';
+  addDialogOpen?: boolean;
+  onAddDialogOpenChange?: (open: boolean) => void;
 }
 
 type SortField = keyof Task;
@@ -29,7 +31,7 @@ type SortDirection = 'asc' | 'desc' | null;
 
 const trades = ['Tile', 'Plumbing', 'Landscaping', 'Electrical', 'Drywall', 'Paint', 'HVAC', 'Flooring', 'Cabinets', 'Framing', 'Other'];
 
-export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd = true, canDelete = true, canExport = true, quickFilter = 'all' }: TaskTableProps) {
+export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd = true, canDelete = true, canExport = true, quickFilter = 'all', addDialogOpen: controlledAddOpen, onAddDialogOpenChange: onControlledAddOpenChange }: TaskTableProps) {
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     project: 'all',
@@ -46,7 +48,9 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
 
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [internalAddOpen, setInternalAddOpen] = useState(false);
+  const addDialogOpen = controlledAddOpen !== undefined ? controlledAddOpen : internalAddOpen;
+  const setAddDialogOpen = onControlledAddOpenChange ?? setInternalAddOpen;
 
   useEffect(() => {
     setFilters((prev) => ({
@@ -242,7 +246,7 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
         status: 'Open',
         notes: '',
       });
-      setShowAddDialog(false);
+      setAddDialogOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add task');
     }
@@ -370,9 +374,9 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
               </button>
             )}
             {canAdd && (
-              <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+              <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
                 <DialogTrigger asChild>
-                  <button type="button" className="btn btn-gold" onClick={() => setShowAddDialog(true)}>
+                  <button type="button" className="btn btn-gold" onClick={() => setAddDialogOpen(true)}>
                     + Add Task
                   </button>
                 </DialogTrigger>
@@ -494,8 +498,8 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
-                    <Button onClick={handleAddTask}>Add Task</Button>
+                    <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleAddTask}>Save Task</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -553,7 +557,7 @@ export function TaskTable({ tasks, onUpdateTask, onDeleteTask, onAddTask, canAdd
                         value={task.status}
                         onValueChange={(val) => onUpdateTask(task.id, { status: val as TaskStatus })}
                       >
-                        <SelectTrigger className="w-32 h-8 text-xs">
+                        <SelectTrigger className={`status-select-trigger ${task.status === 'Open' ? 'status-open' : ''}`} style={{ minWidth: 90 }}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
